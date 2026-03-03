@@ -592,3 +592,619 @@ body {
   width: 100%;
   margin: 8px 0;
 }
+
+/* ── 매뉴얼 버튼 ─────────────────────────── */
+.btn-manual {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--info-bg);
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s;
+}
+
+.btn-manual:hover {
+  background: #dbeafe;
+}
+
+/* ══════════════════════════════════════════════
+   모달 (레이어 팝업)
+   ══════════════════════════════════════════════ */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px 20px;
+  overflow-y: auto;
+}
+
+.modal-overlay.open {
+  display: flex;
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 680px;
+  max-height: none;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: modalIn 0.25s ease;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--bg);
+  border-radius: 6px;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: background 0.15s;
+}
+
+.modal-close:hover {
+  background: var(--border);
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+/* ── 매뉴얼 콘텐츠 ───────────────────────── */
+.manual-intro {
+  margin-bottom: 24px;
+}
+
+.manual-intro p {
+  font-size: 14px;
+  line-height: 1.7;
+  margin-bottom: 6px;
+}
+
+.manual-notice {
+  background: var(--warning-bg);
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 12px;
+  color: #92400e;
+}
+
+.manual-notice.success {
+  background: var(--success-bg);
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+/* ── 스텝 ────────────────────────────────── */
+.manual-step {
+  margin-bottom: 32px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+}
+
+.manual-step:last-of-type {
+  border-bottom: none;
+}
+
+.step-number {
+  display: inline-block;
+  background: var(--primary);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.manual-step h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.manual-step p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+}
+
+.manual-step a {
+  color: var(--info);
+  text-decoration: none;
+}
+
+.manual-step a:hover {
+  text-decoration: underline;
+}
+
+/* ── 스크린샷 (CSS 목업) ─────────────────── */
+.screenshot {
+  margin: 16px 0;
+}
+
+.screenshot-browser {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.browser-bar {
+  background: #f1f1f1;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.browser-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.browser-dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ccc;
+}
+
+.browser-dots span:first-child { background: #ff5f57; }
+.browser-dots span:nth-child(2) { background: #febc2e; }
+.browser-dots span:last-child { background: #28c840; }
+
+.browser-url {
+  flex: 1;
+  background: white;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.browser-content {
+  background: #1a1a2e;
+  min-height: 180px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.screenshot-caption {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: var(--info-bg);
+  border-radius: 6px;
+  border: 1px solid #bfdbfe;
+}
+
+.screenshot-arrow {
+  margin-right: 4px;
+}
+
+/* ── Mock: Groq 로그인 ───────────────────── */
+.mock-groq-login {
+  background: #1e1e2e;
+  padding: 28px 24px;
+  border-radius: 12px;
+  width: 280px;
+  text-align: center;
+}
+
+.mock-logo {
+  font-size: 28px;
+  font-weight: 800;
+  color: #f55036;
+  margin-bottom: 2px;
+  letter-spacing: -1px;
+}
+
+.mock-title {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 20px;
+}
+
+.mock-btn {
+  padding: 9px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.mock-btn.google { background: white; color: #333; }
+.mock-btn.github { background: #24292e; color: white; }
+.mock-btn.microsoft { background: #2f2f2f; color: white; }
+.mock-btn.submit { background: #f55036; color: white; font-weight: 600; }
+.mock-btn.cancel { background: #333; color: #aaa; }
+
+.mock-icon {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.mock-divider {
+  color: #555;
+  font-size: 12px;
+  margin: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mock-divider::before, .mock-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #333;
+}
+
+.mock-input {
+  background: #2a2a3a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.mock-input.filled {
+  color: #ddd;
+}
+
+/* ── Mock: Groq 콘솔 ────────────────────── */
+.mock-groq-console {
+  display: flex;
+  width: 100%;
+  min-height: 160px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mock-sidebar {
+  width: 130px;
+  background: #16162a;
+  padding: 12px 0;
+}
+
+.mock-sidebar-logo {
+  font-size: 18px;
+  font-weight: 800;
+  color: #f55036;
+  padding: 0 14px 12px;
+  letter-spacing: -1px;
+}
+
+.mock-sidebar-item {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #999;
+  cursor: default;
+  position: relative;
+}
+
+.mock-sidebar-item.active {
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mock-main {
+  flex: 1;
+  background: #1e1e30;
+  padding: 16px 20px;
+}
+
+.mock-page-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 4px;
+}
+
+.mock-page-desc {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 14px;
+}
+
+.mock-create-btn {
+  display: inline-block;
+  background: #f55036;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+  position: relative;
+}
+
+.mock-table-header {
+  display: flex;
+  gap: 24px;
+  font-size: 11px;
+  color: #666;
+  padding: 8px 0;
+  border-top: 1px solid #333;
+}
+
+/* ── Mock: 다이얼로그 ────────────────────── */
+.mock-groq-dialog {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.mock-dialog-box {
+  background: #1e1e30;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 24px;
+  width: 320px;
+}
+
+.mock-dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 16px;
+}
+
+.mock-dialog-title.mock-success {
+  color: #4ade80;
+}
+
+.mock-label {
+  font-size: 12px;
+  color: #aaa;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.mock-warning {
+  font-size: 12px;
+  color: #fbbf24;
+  margin-bottom: 12px;
+}
+
+.mock-key-display {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.mock-key-display code {
+  font-size: 11px;
+  color: #4ade80;
+  font-family: monospace;
+}
+
+.mock-copy-btn {
+  background: #2a2a3a;
+  color: white;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: default;
+  position: relative;
+}
+
+.mock-dialog-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* ── Mock: 앱 사이드바 ───────────────────── */
+.mock-app-sidebar {
+  background: white;
+  width: 240px;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.mock-app-menu {
+  font-size: 14px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.mock-app-btn {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: #333;
+}
+
+.mock-app-btn:first-of-type {
+  background: var(--primary);
+  color: white;
+}
+
+.mock-app-btn.dim {
+  color: #999;
+}
+
+.mock-hr {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 10px 0;
+}
+
+.mock-app-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #999;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.mock-app-sublabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.mock-app-caption {
+  font-size: 11px;
+  color: var(--success);
+  margin-top: 6px;
+}
+
+/* ── 하이라이트 링 (주목 표시) ────────────── */
+.mock-highlight-ring {
+  position: absolute;
+  inset: -4px;
+  border: 2px solid #fbbf24;
+  border-radius: 8px;
+  animation: ringPulse 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.mock-copy-btn .mock-highlight-ring,
+.mock-create-btn .mock-highlight-ring,
+.mock-sidebar-item .mock-highlight-ring {
+  inset: -3px;
+  border-radius: 6px;
+}
+
+.mock-input .mock-highlight-ring {
+  inset: -3px;
+  border-radius: 8px;
+}
+
+@keyframes ringPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ── 매뉴얼 하단 ────────────────────────── */
+.manual-footer {
+  margin-top: 8px;
+}
+
+.manual-faq {
+  margin-top: 20px;
+}
+
+.manual-faq h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.manual-faq details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.manual-faq summary {
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--bg);
+  user-select: none;
+}
+
+.manual-faq summary:hover {
+  background: var(--border);
+}
+
+.manual-faq details p {
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* ── 모바일 대응 ─────────────────────────── */
+@media (max-width: 768px) {
+  .modal {
+    max-width: 100%;
+    border-radius: 8px;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .mock-groq-login {
+    width: 100%;
+  }
+
+  .mock-dialog-box {
+    width: 100%;
+  }
+
+  .mock-app-sidebar {
+    width: 100%;
+  }
+
+  .correction-compare {
+    grid-template-columns: 1fr;
+  }
+}

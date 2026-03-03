@@ -130,6 +130,21 @@ async function init() {
     sidebar.classList.remove('open');
   });
 
+  // 매뉴얼 모달
+  const manualModal = document.getElementById('manual-modal');
+  document.getElementById('btn-manual').addEventListener('click', () => {
+    manualModal.classList.add('open');
+  });
+  document.getElementById('modal-close').addEventListener('click', () => {
+    manualModal.classList.remove('open');
+  });
+  manualModal.addEventListener('click', (e) => {
+    if (e.target === manualModal) manualModal.classList.remove('open');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') manualModal.classList.remove('open');
+  });
+
   // 해시 라우팅
   window.addEventListener('hashchange', handleHashChange);
 

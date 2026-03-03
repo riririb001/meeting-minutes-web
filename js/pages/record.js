@@ -28,13 +28,10 @@ export function renderRecordPage(container) {
 
     <!-- 템플릿 선택 -->
     <div class="template-selector" id="template-selector">
-      <div class="template-selector-header">
-        <span class="template-selector-title">템플릿 선택</span>
-        <button class="template-toggle-btn" id="template-toggle">변경</button>
-      </div>
-      <div class="template-current" id="template-current"></div>
-      <div class="template-list-wrap" id="template-list-wrap" style="display:none;">
-        <div class="template-list" id="template-list"></div>
+      <div class="template-selector-title">템플릿 선택</div>
+      <div class="template-dropdown" id="template-dropdown">
+        <div class="tpl-trigger" id="tpl-trigger"></div>
+        <div class="tpl-dropdown-list" id="tpl-dropdown-list"></div>
       </div>
     </div>
 
@@ -87,16 +84,15 @@ export function renderRecordPage(container) {
 // ── 템플릿 선택 UI ────────────────────────────
 
 function renderTemplateUI(container) {
-  const currentArea = container.querySelector('#template-current');
-  const listWrap = container.querySelector('#template-list-wrap');
-  const listArea = container.querySelector('#template-list');
-  const toggleBtn = container.querySelector('#template-toggle');
+  const dropdown = container.querySelector('#template-dropdown');
+  const trigger = container.querySelector('#tpl-trigger');
+  const list = container.querySelector('#tpl-dropdown-list');
 
-  // 현재 선택된 템플릿 표시
-  updateCurrentTemplate(currentArea);
+  // 트리거(현재 선택 템플릿) 렌더링
+  renderTrigger(trigger);
 
-  // 전체 템플릿 리스트 렌더링 (카테고리별 그룹)
-  listArea.innerHTML = TEMPLATE_CATEGORIES.map(cat => `
+  // 드롭다운 리스트 렌더링
+  list.innerHTML = TEMPLATE_CATEGORIES.map(cat => `
     <div class="tpl-category">
       <div class="tpl-category-header">${cat.name} <span class="tpl-category-count">${cat.templates.length}</span></div>
       ${cat.templates.map(t => `
@@ -111,43 +107,43 @@ function renderTemplateUI(container) {
     </div>
   `).join('');
 
-  // 토글 버튼: 리스트 열기/닫기
-  toggleBtn.addEventListener('click', () => {
-    const isOpen = listWrap.style.display !== 'none';
-    listWrap.style.display = isOpen ? 'none' : 'block';
-    toggleBtn.textContent = isOpen ? '변경' : '닫기';
+  // 트리거 클릭 → 드롭다운 토글
+  trigger.addEventListener('click', () => {
+    dropdown.classList.toggle('open');
   });
 
-  // 카드 클릭 → 선택
-  listArea.querySelectorAll('.tpl-item').forEach(item => {
+  // 항목 클릭 → 선택 + 닫기
+  list.querySelectorAll('.tpl-item').forEach(item => {
     item.addEventListener('click', () => {
       selectedTemplateId = item.dataset.id;
       localStorage.setItem('selected_template_id', selectedTemplateId);
 
-      // 선택 상태 UI 업데이트
-      listArea.querySelectorAll('.tpl-item').forEach(i => i.classList.remove('selected'));
+      list.querySelectorAll('.tpl-item').forEach(i => i.classList.remove('selected'));
       item.classList.add('selected');
 
-      updateCurrentTemplate(currentArea);
-
-      // 선택 후 리스트 닫기
-      listWrap.style.display = 'none';
-      toggleBtn.textContent = '변경';
+      renderTrigger(trigger);
+      dropdown.classList.remove('open');
     });
+  });
+
+  // 외부 클릭 시 닫기
+  document.addEventListener('click', (e) => {
+    if (!dropdown.contains(e.target)) {
+      dropdown.classList.remove('open');
+    }
   });
 }
 
-function updateCurrentTemplate(currentArea) {
-  const template = getTemplateById(selectedTemplateId);
-  if (template) {
-    currentArea.innerHTML = `
-      <div class="tpl-current-card">
-        <div class="tpl-item-icon">${template.icon}</div>
-        <div class="tpl-item-body">
-          <div class="tpl-item-name">${template.name}</div>
-          <div class="tpl-item-desc">${template.description}</div>
-        </div>
+function renderTrigger(trigger) {
+  const t = getTemplateById(selectedTemplateId);
+  if (t) {
+    trigger.innerHTML = `
+      <div class="tpl-item-icon">${t.icon}</div>
+      <div class="tpl-item-body">
+        <div class="tpl-item-name">${t.name}</div>
+        <div class="tpl-item-desc">${t.description}</div>
       </div>
+      <span class="tpl-trigger-arrow">&#x25BE;</span>
     `;
   }
 }

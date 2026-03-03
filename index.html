@@ -33,16 +33,16 @@
     </div>
 
     <hr class="sidebar-divider">
-
-    <div class="sidebar-section">
-      <h3>API URL 설정</h3>
-      <label for="api-base-url">Groq API Base URL</label>
-      <input type="text" id="api-base-url" placeholder="https://api.groq.com/openai/v1" value="https://api.groq.com/openai/v1">
-      <p class="caption">CORS 문제 시 프록시 URL을 입력하세요.</p>
-    </div>
-
-    <hr class="sidebar-divider">
     <p class="caption">API 키는 브라우저에만 저장됩니다.</p>
+
+    <details class="sidebar-advanced">
+      <summary>고급 설정</summary>
+      <div class="sidebar-section" style="margin-top:8px;">
+        <label for="api-base-url">API Base URL</label>
+        <input type="text" id="api-base-url" placeholder="https://api.groq.com/openai/v1" value="https://api.groq.com/openai/v1">
+        <p class="caption">기본값 그대로 사용하세요.</p>
+      </div>
+    </details>
   </aside>
 
   <!-- 모바일 메뉴 토글 -->
@@ -53,230 +53,153 @@
     <!-- 페이지 내용이 여기 렌더링됩니다 -->
   </main>
 
-  <!-- API Key 매뉴얼 모달 -->
+  <!-- API Key 매뉴얼 모달 (기본: 숨김) -->
   <div class="modal-overlay" id="manual-modal">
     <div class="modal">
       <div class="modal-header">
-        <h2>&#x1F4D6; Groq API Key 발급 매뉴얼</h2>
+        <h2>&#x1F4D6; API Key 발급 가이드</h2>
         <button class="modal-close" id="modal-close">&times;</button>
       </div>
       <div class="modal-body">
 
         <div class="manual-intro">
-          <p>이 서비스는 <strong>Groq API</strong>를 사용하여 음성을 텍스트로 변환하고 회의록을 자동 생성합니다.</p>
-          <p>API Key는 <strong>무료</strong>로 발급받을 수 있으며, 아래 단계를 따라하시면 됩니다.</p>
-          <div class="manual-notice">
-            <strong>&#x26A0;&#xFE0F; 참고:</strong> API 키는 이 브라우저에만 저장되며, 외부 서버로 전송되지 않습니다.<br>
-            브라우저 데이터(캐시)를 삭제하면 키와 회의록이 함께 삭제됩니다.
-          </div>
+          <p>이 서비스는 <strong>Groq API (무료)</strong>를 사용합니다.<br>아래 5단계를 따라 API Key를 발급받으세요.</p>
         </div>
 
         <!-- Step 1 -->
-        <div class="manual-step">
-          <div class="step-number">Step 1</div>
-          <h3>Groq 사이트 접속 및 회원가입</h3>
-          <p><a href="https://console.groq.com" target="_blank" rel="noopener">https://console.groq.com</a> 에 접속합니다.</p>
-
-          <div class="screenshot">
-            <div class="screenshot-browser">
-              <div class="browser-bar">
-                <div class="browser-dots"><span></span><span></span><span></span></div>
-                <div class="browser-url">console.groq.com</div>
-              </div>
-              <div class="browser-content">
-                <div class="mock-groq-login">
-                  <div class="mock-logo">groq</div>
-                  <div class="mock-title">BuildFast</div>
-                  <div class="mock-btn google"><span class="mock-icon">G</span> Continue with Google</div>
-                  <div class="mock-btn github"><span class="mock-icon">&#x2B24;</span> Continue with GitHub</div>
-                  <div class="mock-btn microsoft"><span class="mock-icon">&#x25A0;</span> Continue with Microsoft</div>
-                  <div class="mock-divider"><span>or</span></div>
-                  <div class="mock-input">Email address</div>
-                  <div class="mock-btn submit">Continue</div>
-                </div>
-              </div>
+        <div class="guide-step">
+          <div class="guide-step-header">
+            <span class="guide-num">1</span>
+            <div>
+              <h3>Groq 사이트 접속</h3>
+              <p>아래 링크를 클릭하여 Groq 콘솔에 접속합니다.</p>
             </div>
-            <div class="screenshot-caption">
-              <span class="screenshot-arrow">&#x261D;</span>
-              Google, GitHub, Microsoft 계정 중 하나로 간편 로그인하세요.
-            </div>
+          </div>
+          <div class="guide-action-box">
+            <a href="https://console.groq.com" target="_blank" rel="noopener" class="guide-link-btn">
+              &#x1F517; console.groq.com 열기
+            </a>
           </div>
         </div>
 
         <!-- Step 2 -->
-        <div class="manual-step">
-          <div class="step-number">Step 2</div>
-          <h3>API Keys 페이지로 이동</h3>
-          <p>로그인 후, 왼쪽 메뉴에서 <strong>"API Keys"</strong>를 클릭합니다.</p>
-
-          <div class="screenshot">
-            <div class="screenshot-browser">
-              <div class="browser-bar">
-                <div class="browser-dots"><span></span><span></span><span></span></div>
-                <div class="browser-url">console.groq.com/keys</div>
-              </div>
-              <div class="browser-content">
-                <div class="mock-groq-console">
-                  <div class="mock-sidebar">
-                    <div class="mock-sidebar-logo">groq</div>
-                    <div class="mock-sidebar-item">Playground</div>
-                    <div class="mock-sidebar-item active">
-                      <span class="mock-highlight-ring"></span>
-                      API Keys
-                    </div>
-                    <div class="mock-sidebar-item">Models</div>
-                    <div class="mock-sidebar-item">Settings</div>
-                  </div>
-                  <div class="mock-main">
-                    <div class="mock-page-title">API Keys</div>
-                    <div class="mock-page-desc">Manage your project API keys.</div>
-                    <div class="mock-create-btn">
-                      <span class="mock-highlight-ring"></span>
-                      + Create API Key
-                    </div>
-                    <div class="mock-table-header">
-                      <span>Name</span><span>Secret Key</span><span>Created</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="screenshot-caption">
-              <span class="screenshot-arrow">&#x261D;</span>
-              왼쪽 메뉴의 <strong>"API Keys"</strong> 클릭 &rarr; <strong>"Create API Key"</strong> 버튼 클릭
+        <div class="guide-step">
+          <div class="guide-step-header">
+            <span class="guide-num">2</span>
+            <div>
+              <h3>회원가입 / 로그인</h3>
+              <p>아래 방법 중 하나로 간편 로그인합니다.</p>
             </div>
           </div>
+          <div class="guide-options">
+            <div class="guide-option"><span class="guide-option-icon" style="color:#4285f4;">G</span> Continue with Google</div>
+            <div class="guide-option"><span class="guide-option-icon" style="color:#fff; background:#24292e; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#x2B24;</span> Continue with GitHub</div>
+            <div class="guide-option"><span class="guide-option-icon" style="color:#00a4ef;">&#x25A0;</span> Continue with Microsoft</div>
+          </div>
+          <p class="guide-tip">&#x1F4A1; Google 계정으로 로그인하는 것이 가장 간편합니다.</p>
         </div>
 
         <!-- Step 3 -->
-        <div class="manual-step">
-          <div class="step-number">Step 3</div>
-          <h3>API Key 생성</h3>
-          <p><strong>"Create API Key"</strong> 버튼을 클릭하면 팝업이 나타납니다.</p>
-
-          <div class="screenshot">
-            <div class="screenshot-browser">
-              <div class="browser-bar">
-                <div class="browser-dots"><span></span><span></span><span></span></div>
-                <div class="browser-url">console.groq.com/keys</div>
-              </div>
-              <div class="browser-content">
-                <div class="mock-groq-dialog">
-                  <div class="mock-dialog-box">
-                    <div class="mock-dialog-title">Create API Key</div>
-                    <label class="mock-label">Display Name</label>
-                    <div class="mock-input filled">meeting-minutes</div>
-                    <div class="mock-dialog-buttons">
-                      <div class="mock-btn cancel">Cancel</div>
-                      <div class="mock-btn submit">
-                        <span class="mock-highlight-ring"></span>
-                        Submit
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="screenshot-caption">
-              <span class="screenshot-arrow">&#x261D;</span>
-              이름에 아무거나 입력 (예: <strong>meeting-minutes</strong>) &rarr; <strong>"Submit"</strong> 클릭
+        <div class="guide-step">
+          <div class="guide-step-header">
+            <span class="guide-num">3</span>
+            <div>
+              <h3>API Keys 메뉴 클릭</h3>
+              <p>로그인 후 화면의 <strong>왼쪽 메뉴</strong>에서 찾으세요.</p>
             </div>
           </div>
+          <div class="guide-menu-mock">
+            <div class="guide-menu-item">&#x25B7; Playground</div>
+            <div class="guide-menu-item highlight">&#x1F511; API Keys &#x2190; 이것을 클릭!</div>
+            <div class="guide-menu-item">&#x25B7; Models</div>
+            <div class="guide-menu-item">&#x25B7; Settings</div>
+          </div>
+          <p class="guide-then">그 다음, 오른쪽 상단의 <strong class="guide-highlight-text">+ Create API Key</strong> 버튼을 클릭합니다.</p>
         </div>
 
         <!-- Step 4 -->
-        <div class="manual-step">
-          <div class="step-number">Step 4</div>
-          <h3>API Key 복사</h3>
-          <p>생성된 키가 표시됩니다. <strong>이 키는 한 번만 표시</strong>되므로 반드시 복사해 주세요.</p>
-
-          <div class="screenshot">
-            <div class="screenshot-browser">
-              <div class="browser-bar">
-                <div class="browser-dots"><span></span><span></span><span></span></div>
-                <div class="browser-url">console.groq.com/keys</div>
-              </div>
-              <div class="browser-content">
-                <div class="mock-groq-dialog">
-                  <div class="mock-dialog-box">
-                    <div class="mock-dialog-title mock-success">&#x2705; API Key Created</div>
-                    <p class="mock-warning">Please save this key. You won't be able to see it again!</p>
-                    <div class="mock-key-display">
-                      <code>gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxx</code>
-                      <div class="mock-copy-btn">
-                        <span class="mock-highlight-ring"></span>
-                        &#x1F4CB; Copy
-                      </div>
-                    </div>
-                    <div class="mock-dialog-buttons">
-                      <div class="mock-btn submit">Done</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        <div class="guide-step">
+          <div class="guide-step-header">
+            <span class="guide-num">4</span>
+            <div>
+              <h3>API Key 생성 &amp; 복사</h3>
+              <p>팝업이 나타나면 아래와 같이 진행합니다.</p>
             </div>
-            <div class="screenshot-caption">
-              <span class="screenshot-arrow">&#x261D;</span>
-              <strong>"Copy"</strong> 버튼을 클릭하여 키를 복사하세요. (gsk_로 시작하는 문자열)
+          </div>
+          <div class="guide-substeps">
+            <div class="guide-substep">
+              <span class="guide-substep-num">4-1</span>
+              이름(Display Name)에 아무거나 입력 (예: <strong>meeting</strong>)
             </div>
+            <div class="guide-substep">
+              <span class="guide-substep-num">4-2</span>
+              <strong>Submit</strong> 버튼 클릭
+            </div>
+            <div class="guide-substep">
+              <span class="guide-substep-num">4-3</span>
+              생성된 키가 화면에 표시됩니다
+            </div>
+            <div class="guide-substep important">
+              <span class="guide-substep-num">4-4</span>
+              <strong>&#x1F4CB; Copy 버튼을 반드시 클릭!</strong>
+            </div>
+          </div>
+          <div class="guide-warning-box">
+            &#x26A0;&#xFE0F; <strong>키는 이 화면에서 한 번만 표시됩니다!</strong><br>
+            반드시 Copy 버튼을 눌러 복사해 주세요.
+          </div>
+          <div class="guide-key-example">
+            키 형태: <code>gsk_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890abcd</code>
           </div>
         </div>
 
         <!-- Step 5 -->
-        <div class="manual-step">
-          <div class="step-number">Step 5</div>
-          <h3>회의록 앱에 키 입력</h3>
-          <p>복사한 키를 왼쪽 사이드바의 <strong>"Groq API Key"</strong> 입력란에 붙여넣기 하세요.</p>
-
-          <div class="screenshot">
-            <div class="screenshot-browser">
-              <div class="browser-bar">
-                <div class="browser-dots"><span></span><span></span><span></span></div>
-                <div class="browser-url">riririb001.github.io/meeting-minutes-web</div>
-              </div>
-              <div class="browser-content">
-                <div class="mock-app-sidebar">
-                  <div class="mock-app-menu">메뉴</div>
-                  <div class="mock-app-btn">&#x1F399; 새 녹음</div>
-                  <div class="mock-app-btn dim">&#x1F4C2; 회의록 목록</div>
-                  <hr class="mock-hr">
-                  <div class="mock-app-label">API 키 설정</div>
-                  <div class="mock-app-sublabel">Groq API Key</div>
-                  <div class="mock-input filled">
-                    <span class="mock-highlight-ring"></span>
-                    gsk_xxxxxxxxxxxxxxxx
-                  </div>
-                  <div class="mock-app-caption">&#x2705; 입력 완료! 바로 사용 가능</div>
-                </div>
-              </div>
-            </div>
-            <div class="screenshot-caption">
-              <span class="screenshot-arrow">&#x261D;</span>
-              키를 붙여넣으면 자동 저장됩니다. 이제 녹음을 시작하세요!
+        <div class="guide-step last">
+          <div class="guide-step-header">
+            <span class="guide-num">5</span>
+            <div>
+              <h3>이 사이트에 키 입력</h3>
+              <p>복사한 키를 아래 위치에 붙여넣기 하세요.</p>
             </div>
           </div>
+          <div class="guide-paste-mock">
+            <div class="guide-paste-label">&#x2190; 왼쪽 사이드바</div>
+            <div class="guide-paste-section">
+              <div class="guide-paste-title">API 키 설정</div>
+              <div class="guide-paste-sublabel">Groq API Key</div>
+              <div class="guide-paste-input">
+                <span>여기에 붙여넣기 (Ctrl+V / Cmd+V)</span>
+                <span class="guide-paste-cursor">|</span>
+              </div>
+            </div>
+          </div>
+          <p class="guide-tip">&#x2705; 입력 즉시 자동 저장됩니다. 다음 방문 시에도 유지됩니다.</p>
         </div>
 
-        <div class="manual-footer">
-          <div class="manual-notice success">
-            <strong>&#x2705; 완료!</strong> 이제 녹음 버튼을 눌러 회의록을 자동 생성할 수 있습니다.<br>
-            API 키는 브라우저에 저장되므로 다시 입력할 필요가 없습니다.
-          </div>
-          <div class="manual-faq">
-            <h3>자주 묻는 질문</h3>
-            <details>
-              <summary>비용이 발생하나요?</summary>
-              <p>Groq API는 무료 티어를 제공합니다. 일반적인 회의록 사용량에서는 비용이 발생하지 않습니다.</p>
-            </details>
-            <details>
-              <summary>API 키를 분실했어요</summary>
-              <p>Groq 콘솔에서 기존 키를 삭제하고 새로 발급받으면 됩니다. 위 Step 2~4를 다시 진행하세요.</p>
-            </details>
-            <details>
-              <summary>다른 기기에서도 사용할 수 있나요?</summary>
-              <p>같은 API 키를 다른 기기 브라우저에 입력하면 됩니다. 단, 회의록 데이터는 기기별로 별도 저장됩니다.</p>
-            </details>
-          </div>
+        <!-- 완료 -->
+        <div class="guide-done">
+          &#x1F389; <strong>설정 완료!</strong> 이제 녹음 버튼을 눌러 회의록을 자동 생성하세요.
+        </div>
+
+        <!-- FAQ -->
+        <div class="guide-faq">
+          <h3>&#x2753; 자주 묻는 질문</h3>
+          <details>
+            <summary>비용이 발생하나요?</summary>
+            <p>Groq API는 무료 티어를 제공합니다. 일반적인 회의록 사용량에서는 비용이 발생하지 않습니다.</p>
+          </details>
+          <details>
+            <summary>API 키를 잃어버렸어요</summary>
+            <p><a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq 콘솔</a>에서 기존 키를 삭제하고 새로 만들면 됩니다.</p>
+          </details>
+          <details>
+            <summary>다른 기기에서도 사용할 수 있나요?</summary>
+            <p>같은 API 키를 다른 기기 브라우저에 입력하면 됩니다. 단, 회의록 데이터는 기기별로 별도 저장됩니다.</p>
+          </details>
+          <details>
+            <summary>브라우저 데이터를 삭제하면 어떻게 되나요?</summary>
+            <p>API 키와 저장된 회의록이 함께 삭제됩니다. 키는 Groq 콘솔에서 다시 확인하거나 새로 발급받으세요.</p>
+          </details>
         </div>
 
       </div>

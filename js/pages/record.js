@@ -28,10 +28,14 @@ export function renderRecordPage(container) {
 
     <!-- 템플릿 선택 -->
     <div class="template-selector" id="template-selector">
-      <div class="template-selector-title">📋 템플릿 선택</div>
-      <div class="template-categories" id="template-tabs"></div>
-      <div id="template-grid-area"></div>
-      <div class="template-selected-info" id="template-selected-info"></div>
+      <div class="template-selector-header">
+        <span class="template-selector-title">템플릿 선택</span>
+        <button class="template-toggle-btn" id="template-toggle">변경</button>
+      </div>
+      <div class="template-current" id="template-current"></div>
+      <div class="template-list-wrap" id="template-list-wrap" style="display:none;">
+        <div class="template-list" id="template-list"></div>
+      </div>
     </div>
 
     <!-- 녹음 버튼 -->
@@ -68,7 +72,7 @@ export function renderRecordPage(container) {
     <div id="upload-info"></div>
   `;
 
-  renderTemplateTabs(container);
+  renderTemplateUI(container);
   setupRecordingEvents(container);
   setupUploadEvents(container);
   showCurrentResults(container);
@@ -82,77 +86,69 @@ export function renderRecordPage(container) {
 
 // ── 템플릿 선택 UI ────────────────────────────
 
-function renderTemplateTabs(container) {
-  const tabsArea = container.querySelector('#template-tabs');
+function renderTemplateUI(container) {
+  const currentArea = container.querySelector('#template-current');
+  const listWrap = container.querySelector('#template-list-wrap');
+  const listArea = container.querySelector('#template-list');
+  const toggleBtn = container.querySelector('#template-toggle');
 
-  // 카테고리 탭 렌더링
-  tabsArea.innerHTML = TEMPLATE_CATEGORIES.map(cat =>
-    `<button class="template-tab" data-cat="${cat.id}">${cat.name}</button>`
-  ).join('');
+  // 현재 선택된 템플릿 표시
+  updateCurrentTemplate(currentArea);
 
-  // 현재 선택된 템플릿의 카테고리 찾기
-  let activeCatId = 'meeting';
-  for (const cat of TEMPLATE_CATEGORIES) {
-    if (cat.templates.some(t => t.id === selectedTemplateId)) {
-      activeCatId = cat.id;
-      break;
-    }
-  }
-
-  // 카테고리 탭 이벤트
-  tabsArea.querySelectorAll('.template-tab').forEach(tab => {
-    if (tab.dataset.cat === activeCatId) tab.classList.add('active');
-    tab.addEventListener('click', () => {
-      tabsArea.querySelectorAll('.template-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      renderTemplateGrid(container, tab.dataset.cat);
-    });
-  });
-
-  // 초기 그리드 렌더링
-  renderTemplateGrid(container, activeCatId);
-}
-
-function renderTemplateGrid(container, categoryId) {
-  const gridArea = container.querySelector('#template-grid-area');
-  const category = TEMPLATE_CATEGORIES.find(c => c.id === categoryId);
-  if (!category) return;
-
-  gridArea.innerHTML = `
-    <div class="template-grid">
-      ${category.templates.map(t => `
-        <div class="template-card ${t.id === selectedTemplateId ? 'selected' : ''}" data-id="${t.id}">
-          <span class="check-icon">&#x2714;</span>
-          <div class="template-card-icon">${t.icon}</div>
-          <div class="template-card-name">${t.name}</div>
-          <div class="template-card-desc">${t.description}</div>
+  // 전체 템플릿 리스트 렌더링 (카테고리별 그룹)
+  listArea.innerHTML = TEMPLATE_CATEGORIES.map(cat => `
+    <div class="tpl-category">
+      <div class="tpl-category-header">${cat.name} <span class="tpl-category-count">${cat.templates.length}</span></div>
+      ${cat.templates.map(t => `
+        <div class="tpl-item ${t.id === selectedTemplateId ? 'selected' : ''}" data-id="${t.id}">
+          <div class="tpl-item-icon">${t.icon}</div>
+          <div class="tpl-item-body">
+            <div class="tpl-item-name">${t.name}</div>
+            <div class="tpl-item-desc">${t.description}</div>
+          </div>
         </div>
       `).join('')}
     </div>
-  `;
+  `).join('');
 
-  // 카드 클릭 이벤트
-  gridArea.querySelectorAll('.template-card').forEach(card => {
-    card.addEventListener('click', () => {
-      selectedTemplateId = card.dataset.id;
-      localStorage.setItem('selected_template_id', selectedTemplateId);
-
-      // 선택 상태 업데이트
-      gridArea.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-
-      updateSelectedInfo(container);
-    });
+  // 토글 버튼: 리스트 열기/닫기
+  toggleBtn.addEventListener('click', () => {
+    const isOpen = listWrap.style.display !== 'none';
+    listWrap.style.display = isOpen ? 'none' : 'block';
+    toggleBtn.textContent = isOpen ? '변경' : '닫기';
   });
 
-  updateSelectedInfo(container);
+  // 카드 클릭 → 선택
+  listArea.querySelectorAll('.tpl-item').forEach(item => {
+    item.addEventListener('click', () => {
+      selectedTemplateId = item.dataset.id;
+      localStorage.setItem('selected_template_id', selectedTemplateId);
+
+      // 선택 상태 UI 업데이트
+      listArea.querySelectorAll('.tpl-item').forEach(i => i.classList.remove('selected'));
+      item.classList.add('selected');
+
+      updateCurrentTemplate(currentArea);
+
+      // 선택 후 리스트 닫기
+      listWrap.style.display = 'none';
+      toggleBtn.textContent = '변경';
+    });
+  });
 }
 
-function updateSelectedInfo(container) {
-  const info = container.querySelector('#template-selected-info');
+function updateCurrentTemplate(currentArea) {
   const template = getTemplateById(selectedTemplateId);
   if (template) {
-    info.innerHTML = `선택됨: <strong>${template.icon} ${template.name}</strong> - ${template.description}`;
+    currentArea.innerHTML = `
+      <div class="tpl-current-card">
+        <div class="tpl-item-icon">${template.icon}</div>
+        <div class="tpl-item-body">
+          <div class="tpl-item-name">${template.name}</div>
+          <div class="tpl-item-desc">${template.description}</div>
+        </div>
+      </div>
+    `;
   }
 }
 

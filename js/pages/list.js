@@ -31,13 +31,16 @@ export async function renderListPage(container) {
     for (const meeting of meetings) {
       const preview = extractPreview(meeting.summary);
       const reviewed = meeting.reviewed ? '<span class="badge badge-success">교정 완료</span>' : '';
+      const templateBadge = meeting.template_name
+        ? `<span class="badge badge-template">${meeting.template_name}</span>`
+        : '';
 
       const card = document.createElement('div');
       card.className = 'card';
       card.innerHTML = `
         <div class="card-header">
           <div>
-            <div class="card-title">${meeting.created_at} ${reviewed}</div>
+            <div class="card-title">${meeting.created_at} ${templateBadge} ${reviewed}</div>
             <div class="card-caption">${preview}</div>
           </div>
           <button class="btn btn-secondary btn-view" data-id="${meeting.id}">보기</button>

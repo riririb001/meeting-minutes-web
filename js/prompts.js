@@ -3,7 +3,13 @@
  * - app.py의 프롬프트를 그대로 사용
  */
 
-export function getSummaryPrompt(today, transcript) {
+export function getSummaryPrompt(today, transcript, template = null) {
+  // 템플릿에 커스텀 프롬프트가 있으면 사용
+  if (template && template.getPrompt) {
+    return template.getPrompt(today, transcript);
+  }
+
+  // 기본 프롬프트 (일반 회의)
   return `당신은 C-Level 경영진에게 보고하기 위한 전문 회의록 작성자입니다.
 아래의 회의 녹취 텍스트를 분석하여, 다음 양식에 맞춰 **한국어**로 깔끔하게 정리해 주세요.
 

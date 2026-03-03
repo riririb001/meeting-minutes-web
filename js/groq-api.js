@@ -7,6 +7,7 @@
 
 import { getSummaryPrompt, getReviewPrompt } from './prompts.js';
 import { getTodayKorean } from './utils.js';
+import { getTemplateById } from './templates.js';
 
 const WHISPER_MODEL = 'whisper-large-v3-turbo';
 const LLM_MODEL = 'llama-3.3-70b-versatile';
@@ -78,11 +79,13 @@ export async function transcribeAudio(audioBlob, apiKey, onProgress) {
  * 회의록 요약 생성 (Groq Chat API)
  * @param {string} transcript - 원본 텍스트
  * @param {string} apiKey - Groq API 키
+ * @param {string} [templateId] - 템플릿 ID (선택)
  * @returns {string} 마크다운 요약
  */
-export async function summarizeMeeting(transcript, apiKey) {
+export async function summarizeMeeting(transcript, apiKey, templateId = null) {
   const today = getTodayKorean();
-  const prompt = getSummaryPrompt(today, transcript);
+  const template = templateId ? getTemplateById(templateId) : null;
+  const prompt = getSummaryPrompt(today, transcript, template);
 
   const result = await apiFetch('/chat/completions', {
     method: 'POST',

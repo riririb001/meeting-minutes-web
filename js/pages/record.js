@@ -1,5 +1,6 @@
 /**
  * 녹음 페이지
+ * - 회의록 템플릿 선택
  * - 마이크 녹음 시작/중지
  * - 기존 오디오 파일 업로드
  * - STT → 요약 파이프라인
@@ -9,6 +10,7 @@ import { AudioRecorder } from '../recorder.js';
 import { transcribeAudio, summarizeMeeting } from '../groq-api.js';
 import { saveMeeting, saveRecording } from '../storage.js';
 import { state, getApiKey } from '../app.js';
+import { TEMPLATE_CATEGORIES, getTemplateById } from '../templates.js';
 import {
   generateMeetingId, getCurrentTimestamp, formatDuration,
   formatFileSize, renderMarkdown, downloadTextFile,
@@ -16,12 +18,21 @@ import {
 
 let recorder = new AudioRecorder();
 let statusInterval = null;
+let selectedTemplateId = localStorage.getItem('selected_template_id') || 'general';
 
 export function renderRecordPage(container) {
   container.innerHTML = `
     <h1 class="page-title">회의록 자동 생성기</h1>
     <p class="page-caption">마이크로 회의를 녹음하면 AI가 자동으로 회의록을 생성합니다.</p>
     <hr class="divider">
+
+    <!-- 템플릿 선택 -->
+    <div class="template-selector" id="template-selector">
+      <div class="template-selector-title">📋 템플릿 선택</div>
+      <div class="template-categories" id="template-tabs"></div>
+      <div id="template-grid-area"></div>
+      <div class="template-selected-info" id="template-selected-info"></div>
+    </div>
 
     <!-- 녹음 버튼 -->
     <div class="btn-group-equal" id="record-buttons">
@@ -57,15 +68,95 @@ export function renderRecordPage(container) {
     <div id="upload-info"></div>
   `;
 
+  renderTemplateTabs(container);
   setupRecordingEvents(container);
   setupUploadEvents(container);
   showCurrentResults(container);
 
-  // 녹음 중이면 상태 표시 시작
+  // 녹음 중이면 상태 표시 + 템플릿 비활성화
   if (recorder.isRecording) {
     startStatusUpdates(container);
+    container.querySelector('#template-selector').classList.add('disabled');
   }
 }
+
+// ── 템플릿 선택 UI ────────────────────────────
+
+function renderTemplateTabs(container) {
+  const tabsArea = container.querySelector('#template-tabs');
+
+  // 카테고리 탭 렌더링
+  tabsArea.innerHTML = TEMPLATE_CATEGORIES.map(cat =>
+    `<button class="template-tab" data-cat="${cat.id}">${cat.name}</button>`
+  ).join('');
+
+  // 현재 선택된 템플릿의 카테고리 찾기
+  let activeCatId = 'meeting';
+  for (const cat of TEMPLATE_CATEGORIES) {
+    if (cat.templates.some(t => t.id === selectedTemplateId)) {
+      activeCatId = cat.id;
+      break;
+    }
+  }
+
+  // 카테고리 탭 이벤트
+  tabsArea.querySelectorAll('.template-tab').forEach(tab => {
+    if (tab.dataset.cat === activeCatId) tab.classList.add('active');
+    tab.addEventListener('click', () => {
+      tabsArea.querySelectorAll('.template-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      renderTemplateGrid(container, tab.dataset.cat);
+    });
+  });
+
+  // 초기 그리드 렌더링
+  renderTemplateGrid(container, activeCatId);
+}
+
+function renderTemplateGrid(container, categoryId) {
+  const gridArea = container.querySelector('#template-grid-area');
+  const category = TEMPLATE_CATEGORIES.find(c => c.id === categoryId);
+  if (!category) return;
+
+  gridArea.innerHTML = `
+    <div class="template-grid">
+      ${category.templates.map(t => `
+        <div class="template-card ${t.id === selectedTemplateId ? 'selected' : ''}" data-id="${t.id}">
+          <span class="check-icon">&#x2714;</span>
+          <div class="template-card-icon">${t.icon}</div>
+          <div class="template-card-name">${t.name}</div>
+          <div class="template-card-desc">${t.description}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // 카드 클릭 이벤트
+  gridArea.querySelectorAll('.template-card').forEach(card => {
+    card.addEventListener('click', () => {
+      selectedTemplateId = card.dataset.id;
+      localStorage.setItem('selected_template_id', selectedTemplateId);
+
+      // 선택 상태 업데이트
+      gridArea.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+
+      updateSelectedInfo(container);
+    });
+  });
+
+  updateSelectedInfo(container);
+}
+
+function updateSelectedInfo(container) {
+  const info = container.querySelector('#template-selected-info');
+  const template = getTemplateById(selectedTemplateId);
+  if (template) {
+    info.innerHTML = `선택됨: <strong>${template.icon} ${template.name}</strong> - ${template.description}`;
+  }
+}
+
+// ── 녹음 이벤트 ──────────────────────────────
 
 function setupRecordingEvents(container) {
   const btnStart = container.querySelector('#btn-start');
@@ -83,6 +174,7 @@ function setupRecordingEvents(container) {
       btnStart.disabled = true;
       btnStop.disabled = false;
       startStatusUpdates(container);
+      container.querySelector('#template-selector').classList.add('disabled');
     } catch (err) {
       showAlert(container, '#processing-status', 'error', `녹음 시작 실패: ${err.message}`);
     }
@@ -126,11 +218,13 @@ function setupRecordingEvents(container) {
 
       updateLastAlert(statusArea, '<strong>2단계 완료:</strong> 음성 → 텍스트 변환 성공!', 'success');
 
-      // 3단계: 요약
+      // 3단계: 요약 (선택된 템플릿 사용)
+      const template = getTemplateById(selectedTemplateId);
+      const templateLabel = template ? template.name : '일반 회의';
       appendAlert(statusArea, 'info',
-        '<span class="spinner"></span> <strong>3단계:</strong> 회의록 요약 생성 중... (Groq API)');
+        `<span class="spinner"></span> <strong>3단계:</strong> 회의록 요약 생성 중... (${templateLabel} 템플릿)`);
 
-      state.currentSummary = await summarizeMeeting(state.currentTranscript, apiKey);
+      state.currentSummary = await summarizeMeeting(state.currentTranscript, apiKey, selectedTemplateId);
       updateLastAlert(statusArea, '<strong>3단계 완료:</strong> 회의록 요약 생성 완료!', 'success');
 
       // 저장
@@ -140,6 +234,8 @@ function setupRecordingEvents(container) {
         created_at: getCurrentTimestamp(),
         transcript: state.currentTranscript,
         summary: state.currentSummary,
+        template_id: selectedTemplateId,
+        template_name: templateLabel,
       };
       await saveMeeting(meetingData);
       await saveRecording(meetingId, result.blob);
@@ -154,6 +250,7 @@ function setupRecordingEvents(container) {
     } finally {
       state.processing = false;
       btnStart.disabled = false;
+      container.querySelector('#template-selector').classList.remove('disabled');
     }
   });
 }
@@ -161,7 +258,6 @@ function setupRecordingEvents(container) {
 function setupUploadEvents(container) {
   const uploadArea = container.querySelector('#upload-area');
   const fileInput = container.querySelector('#file-input');
-  const uploadInfo = container.querySelector('#upload-info');
 
   uploadArea.addEventListener('click', () => fileInput.click());
 
@@ -203,8 +299,9 @@ async function handleFileUpload(file, container) {
   const statusArea = container.querySelector('#upload-info');
   const resultArea = container.querySelector('#result-area');
 
-  // 버튼 비활성화
+  // 버튼 및 템플릿 비활성화
   container.querySelector('#btn-start').disabled = true;
+  container.querySelector('#template-selector').classList.add('disabled');
 
   try {
     showAlert(container, '#upload-info', 'info',
@@ -223,11 +320,13 @@ async function handleFileUpload(file, container) {
 
     updateLastAlert(statusArea, '<strong>1단계 완료:</strong> 음성 → 텍스트 변환 성공!', 'success');
 
-    // 2단계: 요약
+    // 2단계: 요약 (선택된 템플릿 사용)
+    const template = getTemplateById(selectedTemplateId);
+    const templateLabel = template ? template.name : '일반 회의';
     appendAlert(statusArea, 'info',
-      '<span class="spinner"></span> <strong>2단계:</strong> 회의록 요약 생성 중... (Groq API)');
+      `<span class="spinner"></span> <strong>2단계:</strong> 회의록 요약 생성 중... (${templateLabel} 템플릿)`);
 
-    state.currentSummary = await summarizeMeeting(state.currentTranscript, apiKey);
+    state.currentSummary = await summarizeMeeting(state.currentTranscript, apiKey, selectedTemplateId);
     updateLastAlert(statusArea, '<strong>2단계 완료:</strong> 회의록 요약 생성 완료!', 'success');
 
     // 저장
@@ -237,6 +336,8 @@ async function handleFileUpload(file, container) {
       created_at: getCurrentTimestamp(),
       transcript: state.currentTranscript,
       summary: state.currentSummary,
+      template_id: selectedTemplateId,
+      template_name: templateLabel,
     };
     await saveMeeting(meetingData);
     await saveRecording(meetingId, file);
@@ -251,6 +352,7 @@ async function handleFileUpload(file, container) {
   } finally {
     state.processing = false;
     container.querySelector('#btn-start').disabled = false;
+    container.querySelector('#template-selector').classList.remove('disabled');
   }
 }
 

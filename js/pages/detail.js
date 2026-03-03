@@ -47,7 +47,7 @@ function renderNormalMode(container, meeting, displaySummary, isReviewed) {
 
     <hr class="divider">
 
-    <p class="page-caption">작성일시: ${meeting.created_at}</p>
+    <p class="page-caption">작성일시: ${meeting.created_at} ${meeting.template_name ? `<span class="badge badge-template">${meeting.template_name}</span>` : ''}</p>
     ${isReviewed ? '<div class="alert alert-success">텍스트 교정 후 회의록이 재생성되었습니다.</div>' : ''}
 
     <!-- 오디오 재생 -->
@@ -358,7 +358,7 @@ function renderReviewComplete(container, meeting) {
     statusArea.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> 교정된 텍스트로 회의록을 다시 생성하고 있습니다...</div>';
 
     try {
-      const newSummary = await summarizeMeeting(currentTranscript, apiKey);
+      const newSummary = await summarizeMeeting(currentTranscript, apiKey, meeting.template_id || null);
 
       meeting.transcript = currentTranscript;
       meeting.summary = newSummary;

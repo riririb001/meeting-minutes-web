@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>회의록 자동 생성기</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 사이드바 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>메뉴</h2>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-btn active" data-page="record" id="nav-record">
+        <span class="nav-icon">&#x1F399;</span> 새 녹음
+      </button>
+      <button class="nav-btn" data-page="list" id="nav-list">
+        <span class="nav-icon">&#x1F4C2;</span> 회의록 목록
+      </button>
+    </nav>
+
+    <hr class="sidebar-divider">
+
+    <div class="sidebar-section">
+      <h3>API 키 설정</h3>
+      <label for="groq-key">Groq API Key</label>
+      <input type="password" id="groq-key" placeholder="gsk_..." autocomplete="off">
+      <a class="caption-link" href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API 키 발급 (무료)</a>
+    </div>
+
+    <hr class="sidebar-divider">
+
+    <div class="sidebar-section">
+      <h3>API URL 설정</h3>
+      <label for="api-base-url">Groq API Base URL</label>
+      <input type="text" id="api-base-url" placeholder="https://api.groq.com/openai/v1" value="https://api.groq.com/openai/v1">
+      <p class="caption">CORS 문제 시 프록시 URL을 입력하세요.</p>
+    </div>
+
+    <hr class="sidebar-divider">
+    <p class="caption">API 키는 브라우저에만 저장됩니다.</p>
+  </aside>
+
+  <!-- 모바일 메뉴 토글 -->
+  <button class="menu-toggle" id="menu-toggle">&#9776;</button>
+
+  <!-- 메인 콘텐츠 -->
+  <main class="main-content" id="app">
+    <!-- 페이지 내용이 여기 렌더링됩니다 -->
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

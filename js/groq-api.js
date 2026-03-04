@@ -13,15 +13,11 @@ const WHISPER_MODEL = 'whisper-large-v3-turbo';
 const LLM_MODEL = 'llama-3.3-70b-versatile';
 const MAX_FILE_SIZE = 24 * 1024 * 1024; // 24MB
 
-/** 설정에서 API Base URL 가져오기 */
-function getBaseUrl() {
-  return localStorage.getItem('groq_api_base_url') || 'https://api.groq.com/openai/v1';
-}
+const BASE_URL = 'https://api.groq.com/openai/v1';
 
 /** 공통 fetch 래퍼 (에러 처리 포함) */
 async function apiFetch(endpoint, options) {
-  const baseUrl = getBaseUrl();
-  const url = `${baseUrl}${endpoint}`;
+  const url = `${BASE_URL}${endpoint}`;
 
   const response = await fetch(url, options);
 

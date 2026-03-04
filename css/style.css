@@ -1006,22 +1006,6 @@ body {
   color: var(--text-secondary);
 }
 
-/* ── 사이드바 고급 설정 ──────────────────── */
-.sidebar-advanced {
-  margin-top: 8px;
-  font-size: 13px;
-}
-
-.sidebar-advanced summary {
-  cursor: pointer;
-  color: var(--text-secondary);
-  user-select: none;
-  padding: 4px 0;
-}
-
-.sidebar-advanced summary:hover {
-  color: var(--text);
-}
 
 /* ══════════════════════════════════════════════
    템플릿 선택 UI

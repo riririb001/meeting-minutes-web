@@ -101,14 +101,6 @@ async function init() {
     localStorage.setItem('groq_api_key', keyInput.value.trim());
   });
 
-  // API Base URL 로드
-  const savedUrl = localStorage.getItem('groq_api_base_url') || 'https://api.groq.com/openai/v1';
-  const urlInput = document.getElementById('api-base-url');
-  urlInput.value = savedUrl;
-  urlInput.addEventListener('input', () => {
-    localStorage.setItem('groq_api_base_url', urlInput.value.trim());
-  });
-
   // 네비게이션 버튼 이벤트
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {

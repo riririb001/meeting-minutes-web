@@ -36,24 +36,25 @@ async function apiFetch(endpoint, options) {
 }
 
 /**
- * 오디오 Blob을 텍스트로 변환 (Groq Whisper API)
- * @param {Blob} audioBlob - 오디오 파일
+ * 오디오를 텍스트로 변환 (Groq Whisper API)
+ * @param {Blob|Blob[]} audioInput - 오디오 Blob 또는 세그먼트 배열
  * @param {string} apiKey - Groq API 키
  * @param {function} onProgress - 진행 콜백 (선택)
  * @returns {string} 변환된 텍스트
  */
-export async function transcribeAudio(audioBlob, apiKey, onProgress) {
-  const chunks = splitAudioBlob(audioBlob);
+export async function transcribeAudio(audioInput, apiKey, onProgress) {
+  const segments = Array.isArray(audioInput) ? audioInput : [audioInput];
   const allText = [];
 
-  for (let i = 0; i < chunks.length; i++) {
+  for (let i = 0; i < segments.length; i++) {
     if (onProgress) {
-      onProgress(i + 1, chunks.length);
+      onProgress(i + 1, segments.length);
     }
 
-    const ext = getFileExtension(audioBlob.type);
+    const segment = segments[i];
+    const ext = getFileExtension(segment.type);
     const formData = new FormData();
-    formData.append('file', chunks[i], `audio_chunk_${i}.${ext}`);
+    formData.append('file', segment, `audio_segment_${i}.${ext}`);
     formData.append('model', WHISPER_MODEL);
     formData.append('language', 'ko');
     formData.append('prompt', '회의록 녹음입니다.');
@@ -136,22 +137,6 @@ export async function reviewTranscript(transcript, apiKey) {
   } catch (_) {
     return [];
   }
-}
-
-/** 큰 오디오 Blob을 MAX_FILE_SIZE 이하로 분할 */
-function splitAudioBlob(blob) {
-  if (blob.size <= MAX_FILE_SIZE) {
-    return [blob];
-  }
-
-  const chunks = [];
-  let offset = 0;
-  while (offset < blob.size) {
-    const end = Math.min(offset + MAX_FILE_SIZE, blob.size);
-    chunks.push(blob.slice(offset, end, blob.type));
-    offset = end;
-  }
-  return chunks;
 }
 
 /** MIME 타입에서 파일 확장자 추출 */

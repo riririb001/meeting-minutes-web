@@ -196,12 +196,12 @@ function setupRecordingEvents(container) {
       showAlert(container, '#processing-status', 'success',
         `<strong>1단계 완료:</strong> 음성 파일 준비 (${formatFileSize(result.blob.size)}, ${formatDuration(result.duration)})`);
 
-      // 2단계: STT
+      // 2단계: STT (세그먼트 단위로 전송)
       appendAlert(statusArea, 'info',
         '<span class="spinner"></span> <strong>2단계:</strong> 음성을 텍스트로 변환 중... (Groq Whisper API)');
 
       const apiKey = getApiKey();
-      state.currentTranscript = await transcribeAudio(result.blob, apiKey, (current, total) => {
+      state.currentTranscript = await transcribeAudio(result.segments, apiKey, (current, total) => {
         if (total > 1) {
           updateLastAlert(statusArea,
             `<span class="spinner"></span> <strong>2단계:</strong> 음성 변환 중... (${current}/${total} 청크)`);
@@ -296,6 +296,16 @@ async function handleFileUpload(file, container) {
   container.querySelector('#template-selector').classList.add('disabled');
 
   try {
+    // 파일 크기 제한 체크 (Groq API 25MB 제한)
+    if (file.size > 24 * 1024 * 1024) {
+      showAlert(container, '#upload-info', 'error',
+        `파일 크기(${formatFileSize(file.size)})가 24MB를 초과합니다.<br>24MB 이하의 파일만 업로드할 수 있습니다. 긴 회의는 마이크 녹음 기능을 이용해 주세요.`);
+      state.processing = false;
+      container.querySelector('#btn-start').disabled = false;
+      container.querySelector('#template-selector').classList.remove('disabled');
+      return;
+    }
+
     showAlert(container, '#upload-info', 'info',
       `파일: <strong>${file.name}</strong> (${formatFileSize(file.size)})`);
 

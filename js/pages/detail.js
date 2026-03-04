@@ -4,10 +4,10 @@
  * - STT 텍스트 교정 플로우 (수락/무시/직접수정)
  */
 
-import { loadMeeting, updateMeeting, deleteMeeting as dbDeleteMeeting, loadRecording } from '../storage.js';
-import { reviewTranscript, summarizeMeeting } from '../groq-api.js';
+import { loadMeeting, updateMeeting, deleteMeeting as dbDeleteMeeting, loadRecording, saveMeeting } from '../storage.js';
+import { reviewTranscript, summarizeMeeting, transcribeAudio } from '../groq-api.js';
 import { state, getApiKey, navigate } from '../app.js';
-import { renderMarkdown, downloadTextFile, escapeHtml } from '../utils.js';
+import { renderMarkdown, downloadTextFile, escapeHtml, formatFileSize } from '../utils.js';
 
 export async function renderDetailPage(container) {
   const meeting = await loadMeeting(state.detailId);
@@ -32,7 +32,118 @@ export async function renderDetailPage(container) {
     return;
   }
 
+  // 실패/미완료 상태면 재시도 모드
+  if (meeting.status === 'failed' || meeting.status === 'recording_saved') {
+    renderRetryMode(container, meeting);
+    return;
+  }
+
   renderNormalMode(container, meeting, displaySummary, isReviewed);
+}
+
+// ── 재시도 모드 (실패/미완료) ─────────────────────
+function renderRetryMode(container, meeting) {
+  const errorMsg = meeting.error ? `<div class="alert alert-error">이전 오류: ${escapeHtml(meeting.error)}</div>` : '';
+  const hasTranscript = meeting.transcript && meeting.transcript.length > 0;
+
+  container.innerHTML = `
+    <div class="btn-group" style="margin-bottom: 16px;">
+      <button class="btn btn-secondary" id="btn-back">&#x2190; 목록으로 돌아가기</button>
+      <button class="btn btn-danger" id="btn-delete">&#x1F5D1; 삭제</button>
+    </div>
+
+    <hr class="divider">
+
+    <p class="page-caption">작성일시: ${meeting.created_at} ${meeting.template_name ? `<span class="badge badge-template">${meeting.template_name}</span>` : ''}</p>
+
+    ${errorMsg}
+
+    <div class="alert alert-warning">
+      녹음 파일은 저장되어 있습니다. 아래 버튼을 눌러 회의록 생성을 재시도할 수 있습니다.
+    </div>
+
+    <!-- 오디오 재생 -->
+    <div id="audio-section"></div>
+
+    <button class="btn btn-primary btn-full" id="btn-retry">
+      ${hasTranscript ? '&#x1F4DD; 요약 재생성' : '&#x1F504; 음성 변환 + 요약 재시도'}
+    </button>
+    <div id="retry-status"></div>
+  `;
+
+  // 뒤로 가기
+  container.querySelector('#btn-back').addEventListener('click', () => navigate('list'));
+
+  // 삭제
+  container.querySelector('#btn-delete').addEventListener('click', async () => {
+    if (!confirm('이 회의록을 삭제하시겠습니까?')) return;
+    await dbDeleteMeeting(meeting.id);
+    navigate('list');
+  });
+
+  // 오디오 플레이어
+  loadAudioPlayer(container, meeting.id);
+
+  // 재시도
+  container.querySelector('#btn-retry').addEventListener('click', async () => {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      alert('왼쪽 사이드바에서 Groq API Key를 먼저 입력해 주세요!');
+      return;
+    }
+
+    const btn = container.querySelector('#btn-retry');
+    const statusArea = container.querySelector('#retry-status');
+    btn.disabled = true;
+
+    try {
+      let transcript = meeting.transcript || '';
+
+      // STT가 안 되어 있으면 먼저 실행
+      if (!transcript) {
+        statusArea.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> 음성을 텍스트로 변환 중...</div>';
+
+        const blob = await loadRecording(meeting.id);
+        if (!blob) {
+          statusArea.innerHTML = '<div class="alert alert-error">녹음 파일을 찾을 수 없습니다.</div>';
+          btn.disabled = false;
+          return;
+        }
+
+        transcript = await transcribeAudio(blob, apiKey, (current, total) => {
+          if (total > 1) {
+            statusArea.innerHTML = `<div class="alert alert-info"><span class="spinner"></span> 음성 변환 중... (${current}/${total} 청크)</div>`;
+          }
+        });
+
+        statusArea.innerHTML = '<div class="alert alert-success">음성 → 텍스트 변환 성공!</div>';
+      }
+
+      // 요약 생성
+      const el = document.createElement('div');
+      el.className = 'alert alert-info';
+      el.innerHTML = '<span class="spinner"></span> 회의록 요약 생성 중...';
+      statusArea.appendChild(el);
+
+      const summary = await summarizeMeeting(transcript, apiKey, meeting.template_id || null);
+
+      // 저장
+      await saveMeeting({
+        ...meeting,
+        transcript,
+        summary,
+        status: 'completed',
+        error: undefined,
+      });
+
+      statusArea.innerHTML = '<div class="alert alert-success">회의록 생성 완료!</div>';
+      setTimeout(() => renderDetailPage(container), 1000);
+
+    } catch (err) {
+      statusArea.innerHTML = `<div class="alert alert-error">재시도 실패: ${err.message}</div>`;
+      btn.disabled = false;
+    }
+  });
 }
 
 // ── 일반 모드 ─────────────────────────────────

@@ -35,13 +35,21 @@ export async function renderListPage(container) {
         ? `<span class="badge badge-template">${meeting.template_name}</span>`
         : '';
 
+      // 상태 배지
+      let statusBadge = '';
+      if (meeting.status === 'failed') {
+        statusBadge = '<span class="badge badge-error">처리 실패</span>';
+      } else if (meeting.status === 'recording_saved') {
+        statusBadge = '<span class="badge badge-warning">처리 대기</span>';
+      }
+
       const card = document.createElement('div');
       card.className = 'card';
       card.innerHTML = `
         <div class="card-header">
           <div>
-            <div class="card-title">${meeting.created_at} ${templateBadge} ${reviewed}</div>
-            <div class="card-caption">${preview}</div>
+            <div class="card-title">${meeting.created_at} ${templateBadge} ${statusBadge} ${reviewed}</div>
+            <div class="card-caption">${preview || (meeting.status === 'failed' ? '처리에 실패한 녹음입니다. 클릭하여 재시도할 수 있습니다.' : '요약이 아직 생성되지 않았습니다.')}</div>
           </div>
           <button class="btn btn-secondary btn-view" data-id="${meeting.id}">보기</button>
         </div>

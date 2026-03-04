@@ -181,6 +181,10 @@ function setupRecordingEvents(container) {
     const resultArea = container.querySelector('#result-area');
     state.processing = true;
 
+    const template = getTemplateById(selectedTemplateId);
+    const templateLabel = template ? template.name : '일반 회의';
+    const meetingId = generateMeetingId();
+
     try {
       // 1단계: 녹음 중지
       showAlert(container, '#processing-status', 'info',
@@ -192,6 +196,18 @@ function setupRecordingEvents(container) {
         state.processing = false;
         return;
       }
+
+      // 녹음 즉시 저장 (STT 실패해도 오디오 보존)
+      await saveRecording(meetingId, result.blob);
+      await saveMeeting({
+        id: meetingId,
+        created_at: getCurrentTimestamp(),
+        transcript: '',
+        summary: '',
+        template_id: selectedTemplateId,
+        template_name: templateLabel,
+        status: 'recording_saved',
+      });
 
       showAlert(container, '#processing-status', 'success',
         `<strong>1단계 완료:</strong> 음성 파일 준비 (${formatFileSize(result.blob.size)}, ${formatDuration(result.duration)})`);
@@ -211,26 +227,22 @@ function setupRecordingEvents(container) {
       updateLastAlert(statusArea, '<strong>2단계 완료:</strong> 음성 → 텍스트 변환 성공!', 'success');
 
       // 3단계: 요약 (선택된 템플릿 사용)
-      const template = getTemplateById(selectedTemplateId);
-      const templateLabel = template ? template.name : '일반 회의';
       appendAlert(statusArea, 'info',
         `<span class="spinner"></span> <strong>3단계:</strong> 회의록 요약 생성 중... (${templateLabel} 템플릿)`);
 
       state.currentSummary = await summarizeMeeting(state.currentTranscript, apiKey, selectedTemplateId);
       updateLastAlert(statusArea, '<strong>3단계 완료:</strong> 회의록 요약 생성 완료!', 'success');
 
-      // 저장
-      const meetingId = generateMeetingId();
-      const meetingData = {
+      // 최종 저장 (transcript + summary 업데이트)
+      await saveMeeting({
         id: meetingId,
         created_at: getCurrentTimestamp(),
         transcript: state.currentTranscript,
         summary: state.currentSummary,
         template_id: selectedTemplateId,
         template_name: templateLabel,
-      };
-      await saveMeeting(meetingData);
-      await saveRecording(meetingId, result.blob);
+        status: 'completed',
+      });
 
       appendAlert(statusArea, 'success', `회의록이 자동 저장되었습니다. (<code>${meetingId}</code>)`);
 
@@ -238,7 +250,22 @@ function setupRecordingEvents(container) {
       showResults(resultArea, state.currentTranscript, state.currentSummary);
 
     } catch (err) {
-      appendAlert(statusArea, 'error', `처리 실패: ${err.message}`);
+      // 오디오는 이미 저장됨 — 실패 상태 업데이트
+      try {
+        await saveMeeting({
+          id: meetingId,
+          created_at: getCurrentTimestamp(),
+          transcript: state.currentTranscript || '',
+          summary: '',
+          template_id: selectedTemplateId,
+          template_name: templateLabel,
+          status: 'failed',
+          error: err.message,
+        });
+      } catch (_) { /* 저장 실패 무시 */ }
+
+      appendAlert(statusArea, 'error',
+        `처리 실패: ${err.message}<br><small>녹음 파일은 저장되었습니다. 회의록 목록에서 재시도할 수 있습니다.</small>`);
     } finally {
       state.processing = false;
       btnStart.disabled = false;

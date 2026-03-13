@@ -15,24 +15,34 @@ const MAX_FILE_SIZE = 24 * 1024 * 1024; // 24MB
 
 const BASE_URL = 'https://api.groq.com/openai/v1';
 
-/** 공통 fetch 래퍼 (에러 처리 포함) */
-async function apiFetch(endpoint, options) {
+/** 공통 fetch 래퍼 (에러 처리 + 429 재시도) */
+async function apiFetch(endpoint, options, maxRetries = 5) {
   const url = `${BASE_URL}${endpoint}`;
 
-  const response = await fetch(url, options);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, options);
 
-  if (!response.ok) {
-    let errorMsg = `API 오류 (${response.status})`;
-    try {
-      const errorData = await response.json();
-      errorMsg = errorData.error?.message || errorMsg;
-    } catch (_) {
-      // JSON 파싱 실패 시 기본 메시지 사용
+    if (response.status === 429 && attempt < maxRetries) {
+      const retryAfter = parseInt(response.headers.get('Retry-After') || '60', 10);
+      await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+      continue;
     }
-    throw new Error(errorMsg);
+
+    if (!response.ok) {
+      let errorMsg = `API 오류 (${response.status})`;
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.error?.message || errorMsg;
+      } catch (_) {
+        // JSON 파싱 실패 시 기본 메시지 사용
+      }
+      throw new Error(errorMsg);
+    }
+
+    return response.json();
   }
 
-  return response.json();
+  throw new Error('API 요청 재시도 횟수를 초과했습니다. 잠시 후 다시 시도해 주세요.');
 }
 
 /**
@@ -49,6 +59,11 @@ export async function transcribeAudio(audioInput, apiKey, onProgress) {
   for (let i = 0; i < segments.length; i++) {
     if (onProgress) {
       onProgress(i + 1, segments.length);
+    }
+
+    // 두 번째 세그먼트부터 딜레이 추가 (rate limit 방지)
+    if (i > 0) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     const segment = segments[i];

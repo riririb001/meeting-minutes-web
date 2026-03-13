@@ -259,11 +259,20 @@ async function loadAudioPlayer(container, meetingId) {
     const blob = await loadRecording(meetingId);
     if (blob) {
       const url = URL.createObjectURL(blob);
+      const ext = blob.type.includes('mp4') || blob.type.includes('m4a') ? 'm4a'
+        : blob.type.includes('ogg') ? 'ogg'
+        : blob.type.includes('wav') ? 'wav'
+        : 'webm';
       section.innerHTML = `
         <div class="expander collapsed" id="audio-expander">
           <div class="expander-header">&#x1F3B5; 녹음 파일 재생</div>
           <div class="expander-content">
             <audio class="audio-player" controls src="${url}"></audio>
+            <div style="margin-top: 8px;">
+              <a class="btn btn-secondary" id="btn-download-audio" href="${url}" download="recording_${meetingId}.${ext}">
+                &#x1F4BE; 오디오 파일 다운로드
+              </a>
+            </div>
           </div>
         </div>
       `;

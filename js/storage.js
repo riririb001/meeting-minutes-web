@@ -1,102 +1,177 @@
 /**
- * IndexedDB 스토리지 모듈
- * - meetings: 회의록 JSON 데이터
- * - recordings: 오디오 Blob 데이터
+ * storage.js - IndexedDB 래퍼
+ * Object Stores:
+ *   - meetings: 회의록 JSON 데이터 (keyPath: id)
+ *   - audioSegments: 녹음 세그먼트 (crash recovery용)
  */
 
-const DB_NAME = 'meetingMinutesDB';
-const DB_VERSION = 1;
+const DB_NAME = 'MeetingMinutesDB';
+const DB_VERSION = 2;
 
 let db = null;
 
 export async function initDB() {
-  if (db) return db;
-
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (e) => {
-      const database = e.target.result;
-      if (!database.objectStoreNames.contains('meetings')) {
-        const store = database.createObjectStore('meetings', { keyPath: 'id' });
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('meetings')) {
+        const store = d.createObjectStore('meetings', { keyPath: 'id' });
         store.createIndex('created_at', 'created_at', { unique: false });
       }
-      if (!database.objectStoreNames.contains('recordings')) {
-        database.createObjectStore('recordings', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('audioSegments')) {
+        const segStore = d.createObjectStore('audioSegments', { keyPath: 'id', autoIncrement: true });
+        segStore.createIndex('recordingId', 'recordingId', { unique: false });
       }
     };
-
-    request.onsuccess = (e) => {
+    req.onsuccess = (e) => {
       db = e.target.result;
       resolve(db);
     };
-
-    request.onerror = (e) => {
-      reject(new Error('IndexedDB 열기 실패: ' + e.target.error));
-    };
+    req.onerror = (e) => reject(e.target.error);
   });
 }
 
-function getStore(storeName, mode = 'readonly') {
-  const tx = db.transaction(storeName, mode);
-  return tx.objectStore(storeName);
+function getDB() {
+  if (!db) throw new Error('DB가 초기화되지 않았습니다. initDB()를 먼저 호출하세요.');
+  return db;
 }
 
-function promisifyRequest(request) {
+// ── 회의록 CRUD ──
+
+export async function saveMeeting(meeting) {
   return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    const tx = getDB().transaction('meetings', 'readwrite');
+    tx.objectStore('meetings').put(meeting);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
   });
-}
-
-// ── 회의록 CRUD ──────────────────────────────
-
-export async function saveMeeting(data) {
-  const store = getStore('meetings', 'readwrite');
-  return promisifyRequest(store.put(data));
 }
 
 export async function loadMeetings() {
-  const store = getStore('meetings', 'readonly');
-  const all = await promisifyRequest(store.getAll());
-  return all.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('meetings', 'readonly');
+    const req = tx.objectStore('meetings').getAll();
+    req.onsuccess = () => {
+      const meetings = req.result || [];
+      meetings.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      resolve(meetings);
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
 }
 
 export async function loadMeeting(id) {
-  const store = getStore('meetings', 'readonly');
-  return promisifyRequest(store.get(id));
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('meetings', 'readonly');
+    const req = tx.objectStore('meetings').get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = (e) => reject(e.target.error);
+  });
 }
 
-export async function updateMeeting(id, data) {
-  const store = getStore('meetings', 'readwrite');
-  return promisifyRequest(store.put({ ...data, id }));
+export async function updateMeeting(id, updates) {
+  const meeting = await loadMeeting(id);
+  if (!meeting) throw new Error('회의록을 찾을 수 없습니다: ' + id);
+  Object.assign(meeting, updates);
+  return saveMeeting(meeting);
 }
 
 export async function deleteMeeting(id) {
-  const store = getStore('meetings', 'readwrite');
-  await promisifyRequest(store.delete(id));
-  // 연관 녹음 파일도 삭제
-  try {
-    await deleteRecording(id);
-  } catch (_) {
-    // 녹음 파일이 없을 수 있음
-  }
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('meetings', 'readwrite');
+    tx.objectStore('meetings').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
 }
 
-// ── 녹음 CRUD ────────────────────────────────
+// ── 오디오 세그먼트 (crash recovery) ──
 
-export async function saveRecording(id, blob) {
-  const store = getStore('recordings', 'readwrite');
-  return promisifyRequest(store.put({ id, blob, createdAt: new Date().toISOString() }));
+export async function saveAudioSegment(recordingId, segmentIndex, blob, mimeType) {
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('audioSegments', 'readwrite');
+    tx.objectStore('audioSegments').add({
+      recordingId,
+      segmentIndex,
+      blob,
+      mimeType,
+      timestamp: Date.now(),
+      completed: false,
+    });
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
 }
 
-export async function loadRecording(id) {
-  const store = getStore('recordings', 'readonly');
-  const result = await promisifyRequest(store.get(id));
-  return result ? result.blob : null;
+export async function markRecordingComplete(recordingId) {
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('audioSegments', 'readwrite');
+    const store = tx.objectStore('audioSegments');
+    const idx = store.index('recordingId');
+    const req = idx.openCursor(IDBKeyRange.only(recordingId));
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const record = cursor.value;
+        record.completed = true;
+        cursor.update(record);
+        cursor.continue();
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
 }
 
-export async function deleteRecording(id) {
-  const store = getStore('recordings', 'readwrite');
-  return promisifyRequest(store.delete(id));
+export async function getSegmentsByRecordingId(recordingId) {
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('audioSegments', 'readonly');
+    const idx = tx.objectStore('audioSegments').index('recordingId');
+    const req = idx.getAll(IDBKeyRange.only(recordingId));
+    req.onsuccess = () => {
+      const segs = req.result || [];
+      segs.sort((a, b) => a.segmentIndex - b.segmentIndex);
+      resolve(segs);
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export async function deleteAudioSegments(recordingId) {
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('audioSegments', 'readwrite');
+    const store = tx.objectStore('audioSegments');
+    const idx = store.index('recordingId');
+    const req = idx.openCursor(IDBKeyRange.only(recordingId));
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/** 비정상 종료로 남은 세그먼트 찾기 (completed=false, 10분 이상 경과) */
+export async function getOrphanedRecordingIds() {
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('audioSegments', 'readonly');
+    const req = tx.objectStore('audioSegments').getAll();
+    req.onsuccess = () => {
+      const all = req.result || [];
+      const cutoff = Date.now() - 10 * 60 * 1000; // 10분 전
+      const orphanIds = new Set();
+      for (const seg of all) {
+        if (!seg.completed && seg.timestamp < cutoff) {
+          orphanIds.add(seg.recordingId);
+        }
+      }
+      resolve([...orphanIds]);
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
 }

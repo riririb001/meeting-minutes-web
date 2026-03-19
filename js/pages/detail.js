@@ -1,23 +1,37 @@
 /**
- * 회의록 상세 페이지
- * - 회의록 보기, 다운로드, 삭제
- * - STT 텍스트 교정 플로우 (수락/무시/직접수정)
+ * pages/detail.js - 회의록 상세 페이지 + STT 교정 워크플로우
+ * app.py render_detail_page() 이식
  */
 
-import { loadMeeting, updateMeeting, deleteMeeting as dbDeleteMeeting, loadRecording, saveMeeting } from '../storage.js';
-import { reviewTranscript, summarizeMeeting, transcribeAudio } from '../groq-api.js';
-import { state, getApiKey, navigate } from '../app.js';
-import { renderMarkdown, downloadTextFile, escapeHtml, formatFileSize } from '../utils.js';
+import { loadMeeting, updateMeeting, deleteMeeting } from '../storage.js';
+import { summarize, reviewTranscript } from '../groq-api.js';
+import { renderMarkdown, escapeHtml, downloadAsText } from '../utils.js';
+import { navigate, getApiKey, state } from '../app.js';
 
-export async function renderDetailPage(container) {
-  const meeting = await loadMeeting(state.detailId);
+// 교정 상태
+let reviewState = {
+  step: 'idle',     // idle | loading | reviewing | done
+  issues: [],
+  index: 0,
+  transcript: '',
+  meetingId: '',
+};
 
+export function resetReviewState() {
+  reviewState = { step: 'idle', issues: [], index: 0, transcript: '', meetingId: '' };
+}
+
+export async function renderDetailPage(meetingId) {
+  const app = document.getElementById('app');
+
+  const meeting = await loadMeeting(meetingId);
   if (!meeting) {
-    container.innerHTML = `
-      <div class="alert alert-error">회의록을 찾을 수 없습니다.</div>
-      <button class="btn btn-secondary" id="btn-back-err">&#x2190; 목록으로 돌아가기</button>
+    app.innerHTML = `
+      <div class="status-box status-error">회의록을 찾을 수 없습니다.</div>
+      <button class="btn btn-secondary" id="btn-back">← 목록으로 돌아가기</button>
     `;
-    container.querySelector('#btn-back-err').addEventListener('click', () => {
+    document.getElementById('btn-back').addEventListener('click', () => {
+      resetReviewState();
       navigate('list');
     });
     return;
@@ -26,201 +40,69 @@ export async function renderDetailPage(container) {
   const displaySummary = meeting.final_summary || meeting.summary;
   const isReviewed = meeting.reviewed || false;
 
-  // 리뷰 모드 확인
-  if (state.reviewState.step === 'reviewing') {
-    renderReviewMode(container, meeting, displaySummary, isReviewed);
+  // 교정 모드일 때
+  if (reviewState.step === 'reviewing' && reviewState.meetingId === meetingId) {
+    renderReviewMode(app, meeting, displaySummary);
     return;
   }
 
-  // 실패/미완료 상태면 재시도 모드
-  if (meeting.status === 'failed' || meeting.status === 'recording_saved') {
-    renderRetryMode(container, meeting);
+  if (reviewState.step === 'done' && reviewState.meetingId === meetingId) {
+    renderReviewComplete(app, meeting);
     return;
   }
 
-  renderNormalMode(container, meeting, displaySummary, isReviewed);
-}
-
-// ── 재시도 모드 (실패/미완료) ─────────────────────
-function renderRetryMode(container, meeting) {
-  const errorMsg = meeting.error ? `<div class="alert alert-error">이전 오류: ${escapeHtml(meeting.error)}</div>` : '';
-  const hasTranscript = meeting.transcript && meeting.transcript.length > 0;
-
-  container.innerHTML = `
-    <div class="btn-group" style="margin-bottom: 16px;">
-      <button class="btn btn-secondary" id="btn-back">&#x2190; 목록으로 돌아가기</button>
-      <button class="btn btn-danger" id="btn-delete">&#x1F5D1; 삭제</button>
+  // 기본 상세 보기
+  app.innerHTML = `
+    <div class="detail-toolbar">
+      <button class="btn btn-secondary" id="btn-back">← 목록으로 돌아가기</button>
+      <button class="btn btn-secondary" id="btn-download">다운로드 (.txt)</button>
+      <button class="btn btn-danger-outline" id="btn-delete">삭제</button>
     </div>
+    <hr>
+    <p class="caption">작성일시: ${escapeHtml(meeting.created_at)}</p>
+    ${isReviewed ? '<div class="status-box status-success">텍스트 교정 후 회의록이 재생성되었습니다.</div>' : ''}
 
-    <hr class="divider">
-
-    <p class="page-caption">작성일시: ${meeting.created_at} ${meeting.template_name ? `<span class="badge badge-template">${meeting.template_name}</span>` : ''}</p>
-
-    ${errorMsg}
-
-    <div class="alert alert-warning">
-      녹음 파일은 저장되어 있습니다. 아래 버튼을 눌러 회의록 생성을 재시도할 수 있습니다.
-    </div>
-
-    <!-- 오디오 재생 -->
-    <div id="audio-section"></div>
-
-    <button class="btn btn-primary btn-full" id="btn-retry">
-      ${hasTranscript ? '&#x1F4DD; 요약 재생성' : '&#x1F504; 음성 변환 + 요약 재시도'}
-    </button>
-    <div id="retry-status"></div>
-  `;
-
-  // 뒤로 가기
-  container.querySelector('#btn-back').addEventListener('click', () => navigate('list'));
-
-  // 삭제
-  container.querySelector('#btn-delete').addEventListener('click', async () => {
-    if (!confirm('이 회의록을 삭제하시겠습니까?')) return;
-    await dbDeleteMeeting(meeting.id);
-    navigate('list');
-  });
-
-  // 오디오 플레이어
-  loadAudioPlayer(container, meeting.id);
-
-  // 재시도
-  container.querySelector('#btn-retry').addEventListener('click', async () => {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      alert('왼쪽 사이드바에서 Groq API Key를 먼저 입력해 주세요!');
-      return;
-    }
-
-    const btn = container.querySelector('#btn-retry');
-    const statusArea = container.querySelector('#retry-status');
-    btn.disabled = true;
-
-    try {
-      let transcript = meeting.transcript || '';
-
-      // STT가 안 되어 있으면 먼저 실행
-      if (!transcript) {
-        statusArea.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> 음성을 텍스트로 변환 중...</div>';
-
-        const blob = await loadRecording(meeting.id);
-        if (!blob) {
-          statusArea.innerHTML = '<div class="alert alert-error">녹음 파일을 찾을 수 없습니다.</div>';
-          btn.disabled = false;
-          return;
-        }
-
-        transcript = await transcribeAudio(blob, apiKey, (current, total) => {
-          if (total > 1) {
-            statusArea.innerHTML = `<div class="alert alert-info"><span class="spinner"></span> 음성 변환 중... (${current}/${total} 청크)</div>`;
-          }
-        });
-
-        statusArea.innerHTML = '<div class="alert alert-success">음성 → 텍스트 변환 성공!</div>';
-      }
-
-      // 요약 생성
-      const el = document.createElement('div');
-      el.className = 'alert alert-info';
-      el.innerHTML = '<span class="spinner"></span> 회의록 요약 생성 중...';
-      statusArea.appendChild(el);
-
-      const summary = await summarizeMeeting(transcript, apiKey, meeting.template_id || null);
-
-      // 저장
-      await saveMeeting({
-        ...meeting,
-        transcript,
-        summary,
-        status: 'completed',
-        error: undefined,
-      });
-
-      statusArea.innerHTML = '<div class="alert alert-success">회의록 생성 완료!</div>';
-      setTimeout(() => renderDetailPage(container), 1000);
-
-    } catch (err) {
-      statusArea.innerHTML = `<div class="alert alert-error">재시도 실패: ${err.message}</div>`;
-      btn.disabled = false;
-    }
-  });
-}
-
-// ── 일반 모드 ─────────────────────────────────
-function renderNormalMode(container, meeting, displaySummary, isReviewed) {
-  container.innerHTML = `
-    <!-- 상단 버튼 -->
-    <div class="btn-group" style="margin-bottom: 16px; flex-wrap: wrap;">
-      <button class="btn btn-secondary" id="btn-back">&#x2190; 목록으로 돌아가기</button>
-      <button class="btn btn-secondary" id="btn-download">&#x1F4E5; 다운로드 (.txt)</button>
-      <button class="btn btn-danger" id="btn-delete">&#x1F5D1; 삭제</button>
-    </div>
-
-    <hr class="divider">
-
-    <p class="page-caption">작성일시: ${meeting.created_at} ${meeting.template_name ? `<span class="badge badge-template">${meeting.template_name}</span>` : ''}</p>
-    ${isReviewed ? '<div class="alert alert-success">텍스트 교정 후 회의록이 재생성되었습니다.</div>' : ''}
-
-    <!-- 오디오 재생 -->
-    <div id="audio-section"></div>
-
-    <!-- 원본 텍스트 -->
     ${meeting.transcript ? `
-    <div class="expander collapsed" id="transcript-expander">
-      <div class="expander-header">&#x1F50A; 원본 텍스트 보기 (STT 결과)</div>
-      <div class="expander-content">
-        <textarea class="textarea" readonly>${escapeHtml(meeting.transcript)}</textarea>
-      </div>
-    </div>
+    <details class="collapsible">
+      <summary>원본 텍스트 보기 (STT 결과)</summary>
+      <textarea readonly rows="8">${escapeHtml(meeting.transcript)}</textarea>
+    </details>
     ` : ''}
 
-    <!-- 요약 -->
     <div class="markdown-body">${renderMarkdown(displaySummary)}</div>
 
-    <hr class="divider">
-
-    <!-- 검토 버튼 -->
-    <button class="btn btn-secondary btn-full" id="btn-review">
-      &#x1F50D; ${isReviewed ? '음성 인식 재검토' : '음성 인식 텍스트 검토'}
+    <hr>
+    <button class="btn btn-primary" id="btn-review" style="width:100%;">
+      ${isReviewed ? '음성 인식 재검토' : '음성 인식 텍스트 검토'}
     </button>
+    <p class="caption" style="text-align:center; margin-top:4px;">
+      AI가 음성 인식 텍스트에서 잘못 변환된 부분을 찾고, 교정 후 회의록을 다시 생성합니다
+    </p>
   `;
 
-  // 이벤트 바인딩
-  setupNormalEvents(container, meeting, displaySummary);
-  loadAudioPlayer(container, meeting.id);
-}
-
-function setupNormalEvents(container, meeting, displaySummary) {
-  // 뒤로 가기
-  container.querySelector('#btn-back').addEventListener('click', () => {
-    state.reviewState = { step: 'idle', issues: [], index: 0, transcript: '' };
+  // 이벤트
+  document.getElementById('btn-back').addEventListener('click', () => {
+    resetReviewState();
     navigate('list');
   });
 
-  // 다운로드
-  container.querySelector('#btn-download').addEventListener('click', () => {
-    const dateStr = meeting.created_at.slice(0, 10).replace(/-/g, '');
-    downloadTextFile(displaySummary, `회의록_${dateStr}.txt`);
+  document.getElementById('btn-download').addEventListener('click', () => {
+    const fn = `회의록_${(meeting.created_at || '').slice(0, 10).replace(/-/g, '')}.txt`;
+    downloadAsText(displaySummary, fn);
   });
 
-  // 삭제
-  container.querySelector('#btn-delete').addEventListener('click', async () => {
+  document.getElementById('btn-delete').addEventListener('click', async () => {
     if (!confirm('이 회의록을 삭제하시겠습니까?')) return;
-    await dbDeleteMeeting(meeting.id);
-    state.reviewState = { step: 'idle', issues: [], index: 0, transcript: '' };
-    navigate('list');
+    try {
+      await deleteMeeting(meetingId);
+      resetReviewState();
+      navigate('list');
+    } catch (e) {
+      alert('삭제 실패: ' + e.message);
+    }
   });
 
-  // 접기/펼치기
-  const expander = container.querySelector('#transcript-expander');
-  if (expander) {
-    expander.querySelector('.expander-header').addEventListener('click', () => {
-      expander.classList.toggle('collapsed');
-    });
-  }
-
-  // STT 검토
-  container.querySelector('#btn-review').addEventListener('click', async () => {
+  document.getElementById('btn-review').addEventListener('click', async () => {
     const apiKey = getApiKey();
     if (!apiKey) {
       alert('왼쪽 사이드바에서 Groq API Key를 먼저 입력해 주세요!');
@@ -231,274 +113,184 @@ function setupNormalEvents(container, meeting, displaySummary) {
       return;
     }
 
-    const btn = container.querySelector('#btn-review');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> AI가 텍스트를 검토하고 있습니다...';
+    // 검토 시작
+    reviewState.step = 'loading';
+    reviewState.meetingId = meetingId;
+    app.innerHTML = `
+      <div class="status-box status-info">
+        <span class="step-icon">⏳</span> AI가 음성 인식 텍스트를 검토하고 있습니다...
+      </div>
+    `;
 
     try {
       const issues = await reviewTranscript(meeting.transcript, apiKey);
-      state.reviewState = {
-        step: 'reviewing',
-        issues,
-        index: 0,
-        transcript: meeting.transcript,
-      };
-      renderDetailPage(container);
-    } catch (err) {
-      alert(`검토 실패: ${err.message}`);
-      btn.disabled = false;
-      btn.innerHTML = '&#x1F50D; 음성 인식 텍스트 검토';
+      reviewState.issues = issues;
+      reviewState.index = 0;
+      reviewState.transcript = meeting.transcript;
+
+      if (!issues || issues.length === 0) {
+        reviewState.step = 'idle';
+        app.innerHTML = `
+          <div class="status-box status-success">검토 결과, 수정이 필요한 부분이 없습니다! 음성 인식이 잘 되었습니다.</div>
+          <button class="btn btn-secondary" id="btn-back" style="margin-top:12px;">← 돌아가기</button>
+        `;
+        document.getElementById('btn-back').addEventListener('click', () => renderDetailPage(meetingId));
+        return;
+      }
+
+      reviewState.step = 'reviewing';
+      renderDetailPage(meetingId);
+    } catch (e) {
+      reviewState.step = 'idle';
+      alert('검토 실패: ' + e.message);
+      renderDetailPage(meetingId);
     }
   });
 }
 
-// ── 오디오 플레이어 ───────────────────────────
-async function loadAudioPlayer(container, meetingId) {
-  const section = container.querySelector('#audio-section');
-  try {
-    const blob = await loadRecording(meetingId);
-    if (blob) {
-      const url = URL.createObjectURL(blob);
-      const ext = blob.type.includes('mp4') || blob.type.includes('m4a') ? 'm4a'
-        : blob.type.includes('ogg') ? 'ogg'
-        : blob.type.includes('wav') ? 'wav'
-        : 'webm';
-      section.innerHTML = `
-        <div class="expander collapsed" id="audio-expander">
-          <div class="expander-header">&#x1F3B5; 녹음 파일 재생</div>
-          <div class="expander-content">
-            <audio class="audio-player" controls src="${url}"></audio>
-            <div style="margin-top: 8px;">
-              <a class="btn btn-secondary" id="btn-download-audio" href="${url}" download="recording_${meetingId}.${ext}">
-                &#x1F4BE; 오디오 파일 다운로드
-              </a>
-            </div>
-          </div>
-        </div>
-      `;
-      section.querySelector('.expander-header').addEventListener('click', () => {
-        section.querySelector('.expander').classList.toggle('collapsed');
-      });
+// ── 교정 모드 ──
+function renderReviewMode(app, meeting) {
+  const issues = reviewState.issues;
+  let idx = reviewState.index;
+
+  // 이전 교정으로 사라진 텍스트 건너뛰기
+  while (idx < issues.length) {
+    const orig = issues[idx].original || '';
+    if (orig && !reviewState.transcript.includes(orig)) {
+      idx++;
+      reviewState.index = idx;
+      continue;
     }
-  } catch (_) {
-    // 녹음 파일이 없을 수 있음
+    break;
   }
-}
 
-// ── 리뷰 모드 ─────────────────────────────────
-function renderReviewMode(container, meeting, displaySummary, isReviewed) {
-  const { issues, index, transcript: currentTranscript } = state.reviewState;
-
-  // 이슈가 없는 경우
-  if (!issues || issues.length === 0) {
-    container.innerHTML = `
-      <button class="btn btn-secondary" id="btn-back">&#x2190; 목록으로 돌아가기</button>
-      <hr class="divider">
-      <div class="alert alert-success">검토 결과, 수정이 필요한 부분이 없습니다! 음성 인식이 잘 되었습니다.</div>
-    `;
-    container.querySelector('#btn-back').addEventListener('click', () => {
-      state.reviewState = { step: 'idle', issues: [], index: 0, transcript: '' };
-      navigate('detail', { detailId: meeting.id });
-    });
+  // 모든 항목 완료
+  if (idx >= issues.length) {
+    reviewState.step = 'done';
+    renderReviewComplete(app, meeting);
     return;
   }
 
-  // 모든 항목 검토 완료
-  if (index >= issues.length) {
-    renderReviewComplete(container, meeting);
-    return;
-  }
+  const issue = issues[idx];
+  const original = issue.original || '';
+  const suggestion = issue.suggestion || '';
+  const reason = issue.reason || '수정 제안';
+  const occurCount = original ? (reviewState.transcript.split(original).length - 1) : 0;
 
-  // 현재 이슈
-  const issue = issues[index];
-  const originalText = issue.original || '';
-
-  // 이전 교정으로 이미 사라진 텍스트면 건너뛰기
-  if (originalText && !currentTranscript.includes(originalText)) {
-    state.reviewState.index = index + 1;
-    renderDetailPage(container);
-    return;
-  }
-
-  const occurCount = originalText ? (currentTranscript.match(new RegExp(escapeRegex(originalText), 'g')) || []).length : 0;
-  const progressPct = ((index) / issues.length * 100).toFixed(0);
-
-  container.innerHTML = `
-    <button class="btn btn-secondary" id="btn-back-review">&#x2190; 검토 중단하고 돌아가기</button>
-    <hr class="divider">
-
-    <h2 class="section-title">&#x1F50D; 음성 인식 텍스트 검토</h2>
-
-    <div class="progress-bar"><div class="progress-fill" style="width: ${progressPct}%"></div></div>
-    <div class="progress-text">진행: ${index + 1} / ${issues.length}</div>
-
-    <!-- 현재 텍스트 전체 보기 -->
-    <div class="expander collapsed" id="review-transcript-expander" style="margin: 12px 0;">
-      <div class="expander-header">&#x1F4DD; 현재 텍스트 전체 보기</div>
-      <div class="expander-content">
-        <textarea class="textarea" readonly>${escapeHtml(currentTranscript)}</textarea>
-      </div>
+  app.innerHTML = `
+    <h2>음성 인식 텍스트 검토</h2>
+    <div class="progress-bar">
+      <div class="progress-fill" style="width: ${((idx) / issues.length) * 100}%"></div>
     </div>
+    <p class="caption" style="text-align:center;">진행: ${idx + 1} / ${issues.length}</p>
 
-    <!-- 이슈 카드 -->
-    <div class="card">
-      <div class="card-title">#${index + 1}. ${escapeHtml(issue.reason || '수정 제안')}</div>
-      ${occurCount > 1 ? `<p class="caption" style="margin-top: 4px;">이 표현이 텍스트에 <strong>${occurCount}번</strong> 등장합니다 - 수락 시 모두 수정됩니다.</p>` : ''}
+    <details class="collapsible">
+      <summary>현재 텍스트 전체 보기</summary>
+      <textarea readonly rows="6">${escapeHtml(reviewState.transcript)}</textarea>
+    </details>
 
-      <div class="correction-compare">
-        <div>
-          <div class="correction-label">인식된 텍스트:</div>
-          <div class="code-block">${escapeHtml(originalText)}</div>
+    <div class="review-card">
+      <h3>#${idx + 1}. ${escapeHtml(reason)}</h3>
+      ${occurCount > 1 ? `<p class="caption">이 표현이 텍스트에 <strong>${occurCount}번</strong> 등장합니다 → 수락 시 모두 수정됩니다.</p>` : ''}
+
+      <div class="comparison">
+        <div class="comp-side">
+          <label>인식된 텍스트:</label>
+          <code>${escapeHtml(original)}</code>
         </div>
-        <div class="correction-arrow">&#x2192;</div>
-        <div>
-          <div class="correction-label">수정 제안:</div>
-          <div class="code-block">${escapeHtml(issue.suggestion || '')}</div>
+        <div class="comp-arrow">→</div>
+        <div class="comp-side">
+          <label>수정 제안:</label>
+          <code>${escapeHtml(suggestion)}</code>
         </div>
       </div>
 
-      <hr class="divider">
-
-      <div class="btn-group-3">
-        <button class="btn btn-primary" id="btn-accept">&#x2705; 수락</button>
-        <button class="btn btn-secondary" id="btn-custom-toggle">&#x270F; 직접 수정</button>
-        <button class="btn btn-secondary" id="btn-skip">&#x23ED; 무시</button>
+      <div class="review-actions">
+        <button class="btn btn-primary" id="btn-accept">수락</button>
+        <button class="btn btn-secondary" id="btn-skip">무시</button>
       </div>
 
-      <!-- 직접 수정 영역 (숨김) -->
-      <div id="custom-edit-area" style="display: none; margin-top: 12px;">
-        <label style="font-size: 13px; font-weight: 500;">수정할 내용을 입력하세요:</label>
-        <input type="text" class="text-input" id="custom-input" value="${escapeHtml(issue.suggestion || '')}" style="margin: 6px 0;">
-        <button class="btn btn-primary btn-full" id="btn-apply-custom">적용</button>
-      </div>
+      <details class="collapsible" style="margin-top:12px;">
+        <summary>직접 수정하기</summary>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <input type="text" id="custom-text" class="sidebar-input" style="flex:1; color:var(--text); background:var(--bg-secondary);">
+          <button class="btn btn-secondary" id="btn-apply-custom">적용</button>
+        </div>
+      </details>
     </div>
   `;
 
-  // 이벤트 바인딩
-  setupReviewEvents(container, meeting, issue, index);
-}
+  // input value를 프로그래밍 방식으로 설정 (XSS 방지)
+  const customInput = document.getElementById('custom-text');
+  if (customInput) customInput.value = suggestion;
 
-function setupReviewEvents(container, meeting, issue, index) {
-  // 뒤로 가기
-  container.querySelector('#btn-back-review').addEventListener('click', () => {
-    state.reviewState = { step: 'idle', issues: [], index: 0, transcript: '' };
-    renderDetailPage(container);
-  });
-
-  // 접기/펼치기
-  const expander = container.querySelector('#review-transcript-expander');
-  if (expander) {
-    expander.querySelector('.expander-header').addEventListener('click', () => {
-      expander.classList.toggle('collapsed');
-    });
-  }
-
-  // 수락
-  container.querySelector('#btn-accept').addEventListener('click', () => {
-    const originalText = issue.original || '';
-    const replacement = issue.suggestion || '';
-    if (originalText && replacement) {
-      state.reviewState.transcript = state.reviewState.transcript.replaceAll(originalText, replacement);
+  document.getElementById('btn-accept').addEventListener('click', () => {
+    if (original && suggestion) {
+      reviewState.transcript = reviewState.transcript.replaceAll(original, suggestion);
     }
-    state.reviewState.index = index + 1;
-    renderDetailPage(container);
+    reviewState.index = idx + 1;
+    renderDetailPage(reviewState.meetingId);
   });
 
-  // 무시
-  container.querySelector('#btn-skip').addEventListener('click', () => {
-    state.reviewState.index = index + 1;
-    renderDetailPage(container);
+  document.getElementById('btn-skip').addEventListener('click', () => {
+    reviewState.index = idx + 1;
+    renderDetailPage(reviewState.meetingId);
   });
 
-  // 직접 수정 토글
-  container.querySelector('#btn-custom-toggle').addEventListener('click', () => {
-    const area = container.querySelector('#custom-edit-area');
-    area.style.display = area.style.display === 'none' ? 'block' : 'none';
-    if (area.style.display === 'block') {
-      container.querySelector('#custom-input').focus();
+  document.getElementById('btn-apply-custom').addEventListener('click', () => {
+    const custom = document.getElementById('custom-text').value;
+    if (original && custom) {
+      reviewState.transcript = reviewState.transcript.replaceAll(original, custom);
     }
-  });
-
-  // 직접 수정 적용
-  container.querySelector('#btn-apply-custom').addEventListener('click', () => {
-    const originalText = issue.original || '';
-    const customText = container.querySelector('#custom-input').value;
-    if (originalText && customText) {
-      state.reviewState.transcript = state.reviewState.transcript.replaceAll(originalText, customText);
-    }
-    state.reviewState.index = index + 1;
-    renderDetailPage(container);
+    reviewState.index = idx + 1;
+    renderDetailPage(reviewState.meetingId);
   });
 }
 
-// ── 검토 완료 → 회의록 재생성 ──────────────────
-function renderReviewComplete(container, meeting) {
-  const currentTranscript = state.reviewState.transcript;
+// ── 교정 완료 ──
+function renderReviewComplete(app, meeting) {
+  app.innerHTML = `
+    <h2>텍스트 교정 완료</h2>
+    <div class="status-box status-info">모든 항목의 검토가 끝났습니다. 교정된 텍스트로 회의록을 다시 생성합니다.</div>
 
-  container.innerHTML = `
-    <button class="btn btn-secondary" id="btn-back-done">&#x2190; 목록으로 돌아가기</button>
-    <hr class="divider">
+    <details class="collapsible">
+      <summary>교정된 텍스트 확인</summary>
+      <textarea readonly rows="6">${escapeHtml(reviewState.transcript)}</textarea>
+    </details>
 
-    <h2 class="section-title">&#x2705; 텍스트 교정 완료</h2>
-    <div class="alert alert-info">모든 항목의 검토가 끝났습니다. 교정된 텍스트로 회의록을 다시 생성합니다.</div>
-
-    <div class="expander collapsed" id="corrected-expander">
-      <div class="expander-header">&#x1F4DD; 교정된 텍스트 확인</div>
-      <div class="expander-content">
-        <textarea class="textarea" readonly>${escapeHtml(currentTranscript)}</textarea>
-      </div>
-    </div>
-
-    <button class="btn btn-primary btn-full" id="btn-regenerate">&#x1F4DD; 회의록 재생성</button>
-    <div id="regenerate-status"></div>
+    <button class="btn btn-primary" id="btn-regenerate" style="width:100%; margin-top:12px;">
+      회의록 재생성
+    </button>
   `;
 
-  // 뒤로 가기
-  container.querySelector('#btn-back-done').addEventListener('click', () => {
-    state.reviewState = { step: 'idle', issues: [], index: 0, transcript: '' };
-    navigate('list');
-  });
-
-  // 접기/펼치기
-  container.querySelector('#corrected-expander .expander-header').addEventListener('click', () => {
-    container.querySelector('#corrected-expander').classList.toggle('collapsed');
-  });
-
-  // 회의록 재생성
-  container.querySelector('#btn-regenerate').addEventListener('click', async () => {
+  document.getElementById('btn-regenerate').addEventListener('click', async () => {
     const apiKey = getApiKey();
     if (!apiKey) {
-      alert('왼쪽 사이드바에서 Groq API Key를 먼저 입력해 주세요!');
+      alert('Groq API Key를 입력해 주세요.');
       return;
     }
 
-    const btn = container.querySelector('#btn-regenerate');
-    const statusArea = container.querySelector('#regenerate-status');
+    const btn = document.getElementById('btn-regenerate');
     btn.disabled = true;
-    statusArea.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> 교정된 텍스트로 회의록을 다시 생성하고 있습니다...</div>';
+    btn.textContent = '회의록을 재생성하고 있습니다...';
 
     try {
-      const newSummary = await summarizeMeeting(currentTranscript, apiKey, meeting.template_id || null);
+      const hasSpeakers = reviewState.transcript.includes('[화자');
+      const newSummary = await summarize(reviewState.transcript, apiKey, hasSpeakers);
 
-      meeting.transcript = currentTranscript;
-      meeting.summary = newSummary;
-      meeting.final_summary = newSummary;
-      meeting.reviewed = true;
-      await updateMeeting(meeting.id, meeting);
+      await updateMeeting(meeting.id, {
+        transcript: reviewState.transcript,
+        summary: newSummary,
+        final_summary: newSummary,
+        reviewed: true,
+      });
 
-      state.reviewState = { step: 'idle', issues: [], index: 0, transcript: '' };
-      statusArea.innerHTML = '<div class="alert alert-success">회의록이 재생성되었습니다!</div>';
-
-      // 1초 후 상세 페이지로 복귀
-      setTimeout(() => renderDetailPage(container), 1000);
-    } catch (err) {
-      statusArea.innerHTML = `<div class="alert alert-error">재생성 실패: ${err.message}</div>`;
+      resetReviewState();
+      renderDetailPage(meeting.id);
+    } catch (e) {
       btn.disabled = false;
+      btn.textContent = '회의록 재생성';
+      alert('재생성 실패: ' + e.message);
     }
   });
-}
-
-/** 정규식 특수문자 이스케이프 */
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

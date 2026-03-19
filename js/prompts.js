@@ -1,16 +1,27 @@
 /**
- * Groq API용 프롬프트 템플릿
- * - app.py의 프롬프트를 그대로 사용
+ * prompts.js - 모든 프롬프트 템플릿 (app.py에서 그대로 이식)
  */
 
-export function getSummaryPrompt(today, transcript, template = null) {
-  // 템플릿에 커스텀 프롬프트가 있으면 사용
-  if (template && template.getPrompt) {
-    return template.getPrompt(today, transcript);
-  }
+export const BASE_PROMPT =
+  '한국어 비즈니스 회의 녹음입니다. ' +
+  '참석자들이 업무 관련 대화를 나눕니다. ' +
+  'IT 개발, 기획, 디자인, 마케팅 등 다양한 업무 용어가 등장할 수 있습니다. ' +
+  '문장 부호를 정확히 사용하고 자연스러운 한국어 문장으로 전사해 주세요.';
 
-  // 기본 프롬프트 (일반 회의)
-  return `당신은 C-Level 경영진에게 보고하기 위한 전문 회의록 작성자입니다.
+export function buildPrompt(keywords = '', prevText = '') {
+  const parts = [BASE_PROMPT];
+  if (keywords) {
+    const kw = keywords.trim().replace(/,+$/, '');
+    parts.push(`주요 용어: ${kw}.`);
+  }
+  if (prevText) {
+    const tail = prevText.slice(-200).trim();
+    if (tail) parts.push(tail);
+  }
+  return parts.join(' ');
+}
+
+export const SUMMARY_PROMPT_TEMPLATE = `당신은 C-Level 경영진에게 보고하기 위한 전문 회의록 작성자입니다.
 아래의 회의 녹취 텍스트를 분석하여, 다음 양식에 맞춰 **한국어**로 깔끔하게 정리해 주세요.
 
 ────────────────────────
@@ -18,7 +29,7 @@ export function getSummaryPrompt(today, transcript, template = null) {
 
 # 회의록
 
-**회의 일시:** ${today}
+**회의 일시:** {today}
 **작성:** AI 자동 생성
 
 ---
@@ -71,11 +82,79 @@ export function getSummaryPrompt(today, transcript, template = null) {
 ────────────────────────
 [회의 녹취 텍스트]
 
-${transcript}`;
-}
+{transcript}`;
 
-export function getReviewPrompt(transcript) {
-  return `당신은 음성 인식(STT) 결과를 교정하는 전문가입니다.
+export const SUMMARY_PROMPT_WITH_SPEAKERS = `당신은 C-Level 경영진에게 보고하기 위한 전문 회의록 작성자입니다.
+아래의 회의 녹취 텍스트를 분석하여, 다음 양식에 맞춰 **한국어**로 깔끔하게 정리해 주세요.
+
+참고: 녹취 텍스트에서 [화자 1], [화자 2] 등은 AI가 음성으로 자동 구분한 참석자입니다.
+
+────────────────────────
+[양식]
+
+# 회의록
+
+**회의 일시:** {today}
+**작성:** AI 자동 생성
+**참석자:** {speakers}
+
+---
+
+## 1. 배경 및 원인 (Background & Root Cause)
+- 이번 회의가 열리게 된 배경, 원인, 관련 히스토리를 간략히 정리해 주세요.
+- 이전 회의나 이슈와의 연관 관계가 있다면 포함해 주세요.
+
+## 2. 핵심 논의 사항 (Key Discussion Points)
+- 회의에서 논의된 주요 안건을 번호를 매겨 정리해 주세요.
+- 각 안건별로 누가(화자 N) 어떤 의견을 제시했는지 포함해 주세요.
+
+## 3. 결정된 사항 (Decisions / Facts)
+- 회의에서 최종 확정된 결정 사항만 명확하게 기재해 주세요.
+- 확정되지 않은 사항은 포함하지 마세요.
+
+## 4. Action Item
+
+| 번호 | 담당(화자) | 실행 내용 | 기한 | 비고 |
+|------|-----------|----------|------|------|
+| 1    | (화자 N)  | 구체적 실행 항목 | (언급된 경우) | |
+
+## 5. 주요 발언 요약 (Key Statements by Speaker)
+- 각 화자별로 핵심 발언을 1~2줄로 요약해 주세요.
+
+## 6. 기타 참고 사항 (Additional Notes)
+- 후속 회의 일정, 참고 자료, 리스크 등 추가 정보가 있다면 기재해 주세요.
+
+## 7. AI 관점별 추가 의견
+회의 내용을 바탕으로, 아래 4가지 직군 관점에서 놓치기 쉬운 포인트나 추가로 고려하면 좋을 사항을 각각 1~3개씩 제안해 주세요.
+
+### 🎯 기획자 관점
+- 사용자 경험, 비즈니스 임팩트, 우선순위, 일정 리스크 등
+
+### 🎨 디자이너 관점
+- UI/UX 개선점, 사용성, 접근성, 디자인 시스템 일관성 등
+
+### 🖥️ FE 개발자 관점
+- 프론트엔드 구현 시 고려사항, 성능, 호환성, 기술 부채 등
+
+### ⚙️ BE 개발자 관점
+- 백엔드 아키텍처, API 설계, 데이터 모델, 보안, 확장성 등
+
+────────────────────────
+[규칙]
+- 1~6번은 원문에 없는 내용을 절대 추가하지 마세요.
+- 7번(AI 관점별 추가 의견)은 회의 내용을 기반으로 AI가 자유롭게 제안해 주세요.
+- 불명확한 내용은 "(확인 필요)"로 표시해 주세요.
+- 경영진이 빠르게 파악할 수 있도록 간결하고 핵심적으로 작성해 주세요.
+- 전문 용어는 그대로 사용하되, 약어는 처음 등장 시 풀어서 기재해 주세요.
+- 담당자, 기한 등이 명시되지 않은 경우 "(미정)"으로 표기해 주세요.
+- 화자 구분을 적극 활용하여 누가 어떤 의견을 냈는지 명확히 기재해 주세요.
+
+────────────────────────
+[회의 녹취 텍스트]
+
+{transcript}`;
+
+export const TRANSCRIPT_REVIEW_PROMPT = `당신은 음성 인식(STT) 결과를 교정하는 전문가입니다.
 아래 텍스트는 회의 녹음을 음성 인식으로 변환한 결과입니다.
 음성 인식 특성상 잘못 변환된 단어나 문장을 찾아주세요.
 
@@ -100,5 +179,4 @@ export function getReviewPrompt(transcript) {
 ────────────────────────
 [음성 인식 결과 텍스트]
 
-${transcript}`;
-}
+{transcript}`;

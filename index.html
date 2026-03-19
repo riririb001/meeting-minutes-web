@@ -7,194 +7,70 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <!-- 사이드바 -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <h2>메뉴</h2>
-    </div>
-
-    <nav class="sidebar-nav">
-      <button class="nav-btn active" data-page="record" id="nav-record">
-        <span class="nav-icon">&#x1F399;</span> 새 녹음
-      </button>
-      <button class="nav-btn" data-page="list" id="nav-list">
-        <span class="nav-icon">&#x1F4C2;</span> 회의록 목록
-      </button>
-    </nav>
-
-    <hr class="sidebar-divider">
-
-    <div class="sidebar-section">
-      <h3>API 키 설정</h3>
-      <label for="groq-key">Groq API Key</label>
-      <input type="password" id="groq-key" placeholder="gsk_..." autocomplete="off">
-      <a class="caption-link" href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API 키 발급 (무료)</a>
-      <button class="btn-manual" id="btn-manual">&#x1F4D6; API Key 매뉴얼 보기</button>
-    </div>
-
-    <hr class="sidebar-divider">
-    <p class="caption">API 키는 브라우저에만 저장됩니다.</p>
-
-  </aside>
 
   <!-- 모바일 메뉴 토글 -->
-  <button class="menu-toggle" id="menu-toggle">&#9776;</button>
+  <button id="menu-toggle">☰</button>
+
+  <!-- 사이드바 -->
+  <aside id="sidebar">
+    <div class="sidebar-title">회의록 자동 생성기</div>
+
+    <button class="nav-btn active" data-page="record">새 녹음</button>
+    <button class="nav-btn" data-page="list">회의록 목록</button>
+
+    <hr class="sidebar-divider">
+    <h2>API 키 설정</h2>
+
+    <label class="sidebar-label">Groq API Key</label>
+    <input type="password" id="input-api-key" class="sidebar-input" placeholder="gsk_..." autocomplete="off">
+    <p class="sidebar-caption">
+      <button class="sidebar-link-btn" id="btn-api-guide">Groq API 키 발급 방법 (무료)</button>
+    </p>
+
+    <hr class="sidebar-divider">
+    <h2>STT 설정</h2>
+
+    <label class="sidebar-label">Whisper 모델</label>
+    <div class="sidebar-radio-group">
+      <label><input type="radio" name="stt-model" value="whisper-large-v3" checked> 고정밀</label>
+      <label><input type="radio" name="stt-model" value="whisper-large-v3-turbo"> 빠름</label>
+    </div>
+    <p class="sidebar-caption">고정밀: whisper-large-v3 (느림) / 빠름: turbo (정확도 낮음)</p>
+
+    <label class="sidebar-label" style="margin-top:12px;">회의 키워드 (선택)</label>
+    <textarea id="input-keywords" class="sidebar-input" rows="3"
+      placeholder="예: 스프린트, 백로그, KPI, 홍길동, 김철수"></textarea>
+    <p class="sidebar-caption">자주 나오는 인명/용어/팀명을 쉼표로 구분해 입력하면 인식 정확도가 높아집니다.</p>
+
+    <hr class="sidebar-divider">
+    <p class="sidebar-caption">API 키는 브라우저에만 저장됩니다 (서버 전송 없음).</p>
+  </aside>
 
   <!-- 메인 콘텐츠 -->
-  <main class="main-content" id="app">
-    <!-- 페이지 내용이 여기 렌더링됩니다 -->
-  </main>
+  <main id="app"></main>
 
-  <!-- API Key 매뉴얼 모달 (기본: 숨김) -->
-  <div class="modal-overlay" id="manual-modal">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>&#x1F4D6; API Key 발급 가이드</h2>
-        <button class="modal-close" id="modal-close">&times;</button>
-      </div>
-      <div class="modal-body">
-
-        <div class="manual-intro">
-          <p>이 서비스는 <strong>Groq API (무료)</strong>를 사용합니다.<br>아래 5단계를 따라 API Key를 발급받으세요.</p>
-        </div>
-
-        <!-- Step 1 -->
-        <div class="guide-step">
-          <div class="guide-step-header">
-            <span class="guide-num">1</span>
-            <div>
-              <h3>Groq 사이트 접속</h3>
-              <p>아래 링크를 클릭하여 Groq 콘솔에 접속합니다.</p>
-            </div>
-          </div>
-          <div class="guide-action-box">
-            <a href="https://console.groq.com" target="_blank" rel="noopener" class="guide-link-btn">
-              &#x1F517; console.groq.com 열기
-            </a>
-          </div>
-        </div>
-
-        <!-- Step 2 -->
-        <div class="guide-step">
-          <div class="guide-step-header">
-            <span class="guide-num">2</span>
-            <div>
-              <h3>회원가입 / 로그인</h3>
-              <p>아래 방법 중 하나로 간편 로그인합니다.</p>
-            </div>
-          </div>
-          <div class="guide-options">
-            <div class="guide-option"><span class="guide-option-icon" style="color:#4285f4;">G</span> Continue with Google</div>
-            <div class="guide-option"><span class="guide-option-icon" style="color:#fff; background:#24292e; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#x2B24;</span> Continue with GitHub</div>
-            <div class="guide-option"><span class="guide-option-icon" style="color:#00a4ef;">&#x25A0;</span> Continue with Microsoft</div>
-          </div>
-          <p class="guide-tip">&#x1F4A1; Google 계정으로 로그인하는 것이 가장 간편합니다.</p>
-        </div>
-
-        <!-- Step 3 -->
-        <div class="guide-step">
-          <div class="guide-step-header">
-            <span class="guide-num">3</span>
-            <div>
-              <h3>API Keys 메뉴 클릭</h3>
-              <p>로그인 후 화면의 <strong>왼쪽 메뉴</strong>에서 찾으세요.</p>
-            </div>
-          </div>
-          <div class="guide-menu-mock">
-            <div class="guide-menu-item">&#x25B7; Playground</div>
-            <div class="guide-menu-item highlight">&#x1F511; API Keys &#x2190; 이것을 클릭!</div>
-            <div class="guide-menu-item">&#x25B7; Models</div>
-            <div class="guide-menu-item">&#x25B7; Settings</div>
-          </div>
-          <p class="guide-then">그 다음, 오른쪽 상단의 <strong class="guide-highlight-text">+ Create API Key</strong> 버튼을 클릭합니다.</p>
-        </div>
-
-        <!-- Step 4 -->
-        <div class="guide-step">
-          <div class="guide-step-header">
-            <span class="guide-num">4</span>
-            <div>
-              <h3>API Key 생성 &amp; 복사</h3>
-              <p>팝업이 나타나면 아래와 같이 진행합니다.</p>
-            </div>
-          </div>
-          <div class="guide-substeps">
-            <div class="guide-substep">
-              <span class="guide-substep-num">4-1</span>
-              이름(Display Name)에 아무거나 입력 (예: <strong>meeting</strong>)
-            </div>
-            <div class="guide-substep">
-              <span class="guide-substep-num">4-2</span>
-              <strong>Submit</strong> 버튼 클릭
-            </div>
-            <div class="guide-substep">
-              <span class="guide-substep-num">4-3</span>
-              생성된 키가 화면에 표시됩니다
-            </div>
-            <div class="guide-substep important">
-              <span class="guide-substep-num">4-4</span>
-              <strong>&#x1F4CB; Copy 버튼을 반드시 클릭!</strong>
-            </div>
-          </div>
-          <div class="guide-warning-box">
-            &#x26A0;&#xFE0F; <strong>키는 이 화면에서 한 번만 표시됩니다!</strong><br>
-            반드시 Copy 버튼을 눌러 복사해 주세요.
-          </div>
-          <div class="guide-key-example">
-            키 형태: <code>gsk_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890abcd</code>
-          </div>
-        </div>
-
-        <!-- Step 5 -->
-        <div class="guide-step last">
-          <div class="guide-step-header">
-            <span class="guide-num">5</span>
-            <div>
-              <h3>이 사이트에 키 입력</h3>
-              <p>복사한 키를 아래 위치에 붙여넣기 하세요.</p>
-            </div>
-          </div>
-          <div class="guide-paste-mock">
-            <div class="guide-paste-label">&#x2190; 왼쪽 사이드바</div>
-            <div class="guide-paste-section">
-              <div class="guide-paste-title">API 키 설정</div>
-              <div class="guide-paste-sublabel">Groq API Key</div>
-              <div class="guide-paste-input">
-                <span>여기에 붙여넣기 (Ctrl+V / Cmd+V)</span>
-                <span class="guide-paste-cursor">|</span>
-              </div>
-            </div>
-          </div>
-          <p class="guide-tip">&#x2705; 입력 즉시 자동 저장됩니다. 다음 방문 시에도 유지됩니다.</p>
-        </div>
-
-        <!-- 완료 -->
-        <div class="guide-done">
-          &#x1F389; <strong>설정 완료!</strong> 이제 녹음 버튼을 눌러 회의록을 자동 생성하세요.
-        </div>
-
-        <!-- FAQ -->
-        <div class="guide-faq">
-          <h3>&#x2753; 자주 묻는 질문</h3>
-          <details>
-            <summary>비용이 발생하나요?</summary>
-            <p>Groq API는 무료 티어를 제공합니다. 일반적인 회의록 사용량에서는 비용이 발생하지 않습니다.</p>
-          </details>
-          <details>
-            <summary>API 키를 잃어버렸어요</summary>
-            <p><a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq 콘솔</a>에서 기존 키를 삭제하고 새로 만들면 됩니다.</p>
-          </details>
-          <details>
-            <summary>다른 기기에서도 사용할 수 있나요?</summary>
-            <p>같은 API 키를 다른 기기 브라우저에 입력하면 됩니다. 단, 회의록 데이터는 기기별로 별도 저장됩니다.</p>
-          </details>
-          <details>
-            <summary>브라우저 데이터를 삭제하면 어떻게 되나요?</summary>
-            <p>API 키와 저장된 회의록이 함께 삭제됩니다. 키는 Groq 콘솔에서 다시 확인하거나 새로 발급받으세요.</p>
-          </details>
-        </div>
-
-      </div>
+  <!-- API 키 가이드 모달 -->
+  <div id="modal-api-guide" class="modal-overlay" hidden>
+    <div class="modal-content">
+      <button class="modal-close" id="modal-close">&times;</button>
+      <h2>Groq API 키 발급 방법</h2>
+      <p style="margin-bottom:16px;">Groq는 무료로 사용할 수 있는 AI API 서비스입니다.</p>
+      <ol>
+        <li><strong>Groq Console 접속</strong><br>
+          <a href="https://console.groq.com" target="_blank" rel="noopener">https://console.groq.com</a> 에 접속합니다.</li>
+        <li><strong>회원가입 / 로그인</strong><br>
+          Google 계정으로 간편하게 가입할 수 있습니다.</li>
+        <li><strong>API Keys 메뉴 이동</strong><br>
+          좌측 메뉴에서 <strong>API Keys</strong>를 클릭합니다.</li>
+        <li><strong>새 키 생성</strong><br>
+          <strong>Create API Key</strong> 버튼을 누르고, 이름을 입력한 뒤 생성합니다.</li>
+        <li><strong>키 복사 & 붙여넣기</strong><br>
+          생성된 키(<code>gsk_</code>로 시작)를 복사하여 왼쪽 사이드바의 API Key 입력란에 붙여넣으세요.</li>
+      </ol>
+      <p style="margin-top:16px; color:#666;">
+        <strong>참고:</strong> Groq 무료 플랜으로 충분히 사용 가능합니다.
+        API 키는 이 브라우저에만 저장되며 외부로 전송되지 않습니다.
+      </p>
     </div>
   </div>
 

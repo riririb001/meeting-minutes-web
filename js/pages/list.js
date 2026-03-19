@@ -1,26 +1,27 @@
 /**
- * 회의록 목록 페이지
+ * pages/list.js - 회의록 목록 페이지
+ * app.py render_list_page() 이식
  */
 
 import { loadMeetings } from '../storage.js';
+import { extractPreview, escapeHtml } from '../utils.js';
 import { navigate } from '../app.js';
-import { extractPreview } from '../utils.js';
 
-export async function renderListPage(container) {
-  container.innerHTML = `
-    <h1 class="page-title">&#x1F4C2; 회의록 목록</h1>
-    <p class="page-caption">저장된 회의록을 확인할 수 있습니다.</p>
-    <hr class="divider">
-    <div id="meeting-list"></div>
+export async function renderListPage() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <h1>회의록 목록</h1>
+    <p class="caption">저장된 회의록을 확인할 수 있습니다.</p>
+    <hr>
+    <div id="meeting-list"><p class="loading">불러오는 중...</p></div>
   `;
-
-  const listDiv = container.querySelector('#meeting-list');
 
   try {
     const meetings = await loadMeetings();
+    const listEl = document.getElementById('meeting-list');
 
-    if (meetings.length === 0) {
-      listDiv.innerHTML = `
+    if (!meetings || meetings.length === 0) {
+      listEl.innerHTML = `
         <div class="empty-state">
           저장된 회의록이 없습니다.<br>새 녹음을 시작해 보세요.
         </div>
@@ -28,43 +29,31 @@ export async function renderListPage(container) {
       return;
     }
 
+    listEl.innerHTML = '';
     for (const meeting of meetings) {
       const preview = extractPreview(meeting.summary);
-      const reviewed = meeting.reviewed ? '<span class="badge badge-success">교정 완료</span>' : '';
-      const templateBadge = meeting.template_name
-        ? `<span class="badge badge-template">${meeting.template_name}</span>`
-        : '';
-
-      // 상태 배지
-      let statusBadge = '';
-      if (meeting.status === 'failed') {
-        statusBadge = '<span class="badge badge-error">처리 실패</span>';
-      } else if (meeting.status === 'recording_saved') {
-        statusBadge = '<span class="badge badge-warning">처리 대기</span>';
-      }
+      const reviewed = meeting.reviewed ? '<span class="badge badge-reviewed">교정됨</span>' : '';
 
       const card = document.createElement('div');
-      card.className = 'card';
+      card.className = 'meeting-card';
       card.innerHTML = `
-        <div class="card-header">
-          <div>
-            <div class="card-title">${meeting.created_at} ${templateBadge} ${statusBadge} ${reviewed}</div>
-            <div class="card-caption">${preview || (meeting.status === 'failed' ? '처리에 실패한 녹음입니다. 클릭하여 재시도할 수 있습니다.' : '요약이 아직 생성되지 않았습니다.')}</div>
-          </div>
-          <button class="btn btn-secondary btn-view" data-id="${meeting.id}">보기</button>
+        <div class="card-info">
+          <strong>${escapeHtml(meeting.created_at)}</strong>
+          ${reviewed}
+          <p class="card-preview">${escapeHtml(preview)}</p>
         </div>
+        <button class="btn btn-small btn-primary">보기</button>
       `;
-      listDiv.appendChild(card);
-    }
 
-    // 보기 버튼 이벤트
-    listDiv.querySelectorAll('.btn-view').forEach(btn => {
-      btn.addEventListener('click', () => {
-        navigate('detail', { detailId: btn.dataset.id });
+      card.querySelector('button').addEventListener('click', () => {
+        navigate('detail', meeting.id);
       });
-    });
 
-  } catch (err) {
-    listDiv.innerHTML = `<div class="alert alert-error">회의록 목록 로드 실패: ${err.message}</div>`;
+      listEl.appendChild(card);
+    }
+  } catch (e) {
+    document.getElementById('meeting-list').innerHTML = `
+      <div class="status-box status-error">목록 로드 실패: ${escapeHtml(e.message)}</div>
+    `;
   }
 }

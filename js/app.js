@@ -1,111 +1,130 @@
 /**
- * 앱 진입점 - 라우터, 전역 상태, 초기화
+ * app.js - 앱 진입점, 라우터, 전역 상태
  */
 
-import { initDB } from './storage.js';
+import { initDB, getOrphanedRecordingIds, deleteAudioSegments } from './storage.js';
 import { renderRecordPage } from './pages/record.js';
 import { renderListPage } from './pages/list.js';
-import { renderDetailPage } from './pages/detail.js';
+import { renderDetailPage, resetReviewState } from './pages/detail.js';
 
-// ── 전역 상태 ──────────────────────────────
+// ── 전역 상태 ──
 export const state = {
   currentPage: 'record',
   detailId: null,
   processing: false,
   currentTranscript: '',
   currentSummary: '',
-  reviewState: {
-    step: 'idle', // idle, reviewing, done
-    issues: [],
-    index: 0,
-    transcript: '',
-  },
 };
 
-// ── API 키 관리 ────────────────────────────
+// ── API 키 & 설정 ──
 export function getApiKey() {
-  return document.getElementById('groq-key').value.trim();
+  const input = document.getElementById('input-api-key');
+  return input ? input.value.trim() : '';
 }
 
-// ── 페이지 라우팅 ──────────────────────────
-export function navigate(page, params = {}) {
-  state.currentPage = page;
-  if (params.detailId !== undefined) {
-    state.detailId = params.detailId;
+export function getSettings() {
+  const modelRadios = document.querySelectorAll('input[name="stt-model"]');
+  let sttModel = 'whisper-large-v3';
+  for (const r of modelRadios) {
+    if (r.checked) { sttModel = r.value; break; }
   }
 
-  // 네비게이션 버튼 활성화 상태 업데이트
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.page === page);
+  const keywordsEl = document.getElementById('input-keywords');
+  const keywords = keywordsEl ? keywordsEl.value.trim() : '';
+
+  return { sttModel, keywords };
+}
+
+// ── 라우팅 ──
+export function navigate(page, param = null) {
+  if (page === 'detail' && param) {
+    location.hash = `#detail/${param}`;
+  } else {
+    location.hash = `#${page}`;
+  }
+}
+
+function parseHash() {
+  const hash = location.hash.slice(1) || 'record';
+  if (hash.startsWith('detail/')) {
+    return { page: 'detail', id: hash.slice(7) };
+  }
+  return { page: hash, id: null };
+}
+
+async function render() {
+  const { page, id } = parseHash();
+  state.currentPage = page;
+  state.detailId = id;
+
+  // 사이드바 활성 상태 업데이트
+  document.querySelectorAll('.nav-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.page === page || (page === 'detail' && btn.dataset.page === 'list'));
   });
 
-  // URL 해시 업데이트 (히스토리 관리)
-  if (page === 'detail' && state.detailId) {
-    history.pushState(null, '', `#detail/${encodeURIComponent(state.detailId)}`);
-  } else {
-    history.pushState(null, '', `#${page}`);
-  }
-
-  renderCurrentPage();
-}
-
-function renderCurrentPage() {
-  const app = document.getElementById('app');
-  app.innerHTML = '';
-
-  switch (state.currentPage) {
+  switch (page) {
     case 'record':
-      renderRecordPage(app);
+      renderRecordPage();
       break;
     case 'list':
-      renderListPage(app);
+      await renderListPage();
       break;
     case 'detail':
-      renderDetailPage(app);
+      if (id) await renderDetailPage(id);
+      else navigate('list');
       break;
     default:
-      renderRecordPage(app);
+      navigate('record');
   }
 }
 
-// ── 해시 기반 라우팅 ────────────────────────
-function handleHashChange() {
-  const hash = location.hash.slice(1); // # 제거
-  if (hash.startsWith('detail/')) {
-    const id = decodeURIComponent(hash.slice(7));
-    state.currentPage = 'detail';
-    state.detailId = id;
-  } else if (hash === 'list') {
-    state.currentPage = 'list';
-  } else {
-    state.currentPage = 'record';
-  }
-
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.page === state.currentPage);
-  });
-
-  renderCurrentPage();
-}
-
-// ── 초기화 ──────────────────────────────────
+// ── 초기화 ──
 async function init() {
   // IndexedDB 초기화
   await initDB();
 
-  // API 키 로드
+  // API 키 복원
   const savedKey = localStorage.getItem('groq_api_key') || '';
-  const keyInput = document.getElementById('groq-key');
-  keyInput.value = savedKey;
-  keyInput.addEventListener('input', () => {
-    localStorage.setItem('groq_api_key', keyInput.value.trim());
+  const keyInput = document.getElementById('input-api-key');
+  if (keyInput && savedKey) keyInput.value = savedKey;
+
+  // API 키 자동 저장
+  if (keyInput) {
+    let debounce = null;
+    keyInput.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        localStorage.setItem('groq_api_key', keyInput.value.trim());
+      }, 300);
+    });
+  }
+
+  // STT 모델 복원
+  const savedModel = localStorage.getItem('stt_model') || 'whisper-large-v3';
+  const modelRadio = document.querySelector(`input[name="stt-model"][value="${savedModel}"]`);
+  if (modelRadio) modelRadio.checked = true;
+
+  // STT 모델 변경 저장
+  document.querySelectorAll('input[name="stt-model"]').forEach((r) => {
+    r.addEventListener('change', () => {
+      localStorage.setItem('stt_model', r.value);
+    });
   });
 
-  // 네비게이션 버튼 이벤트
-  document.querySelectorAll('.nav-btn').forEach(btn => {
+  // 키워드 복원
+  const savedKeywords = localStorage.getItem('stt_keywords') || '';
+  const keywordsInput = document.getElementById('input-keywords');
+  if (keywordsInput && savedKeywords) keywordsInput.value = savedKeywords;
+  if (keywordsInput) {
+    keywordsInput.addEventListener('input', () => {
+      localStorage.setItem('stt_keywords', keywordsInput.value);
+    });
+  }
+
+  // 사이드바 네비게이션
+  document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      // 리뷰 상태 초기화
-      state.reviewState = { step: 'idle', issues: [], index: 0, transcript: '' };
+      resetReviewState();
       navigate(btn.dataset.page);
     });
   });
@@ -113,40 +132,46 @@ async function init() {
   // 모바일 메뉴 토글
   const menuToggle = document.getElementById('menu-toggle');
   const sidebar = document.getElementById('sidebar');
-  menuToggle.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
-  });
+  if (menuToggle && sidebar) {
+    menuToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+    });
+    // 메뉴 외부 클릭 시 닫기
+    document.getElementById('app').addEventListener('click', () => {
+      sidebar.classList.remove('open');
+    });
+  }
 
-  // 사이드바 외부 클릭 시 닫기 (모바일)
-  document.getElementById('app').addEventListener('click', () => {
-    sidebar.classList.remove('open');
-  });
+  // API 키 가이드 모달
+  const guideBtn = document.getElementById('btn-api-guide');
+  const guideModal = document.getElementById('modal-api-guide');
+  const guideClose = document.getElementById('modal-close');
+  if (guideBtn && guideModal) {
+    guideBtn.addEventListener('click', () => { guideModal.hidden = false; });
+    if (guideClose) guideClose.addEventListener('click', () => { guideModal.hidden = true; });
+    guideModal.addEventListener('click', (e) => {
+      if (e.target === guideModal) guideModal.hidden = true;
+    });
+  }
 
-  // 매뉴얼 모달
-  const manualModal = document.getElementById('manual-modal');
-  document.getElementById('btn-manual').addEventListener('click', () => {
-    manualModal.classList.add('open');
-  });
-  document.getElementById('modal-close').addEventListener('click', () => {
-    manualModal.classList.remove('open');
-  });
-  manualModal.addEventListener('click', (e) => {
-    if (e.target === manualModal) manualModal.classList.remove('open');
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') manualModal.classList.remove('open');
-  });
+  // crash recovery 체크
+  try {
+    const orphanIds = await getOrphanedRecordingIds();
+    if (orphanIds.length > 0) {
+      console.log(`이전 녹음 세그먼트 ${orphanIds.length}건 발견 (자동 정리)`);
+      for (const id of orphanIds) {
+        await deleteAudioSegments(id);
+      }
+    }
+  } catch (e) {
+    console.warn('crash recovery 체크 실패:', e);
+  }
 
-  // 해시 라우팅
-  window.addEventListener('hashchange', handleHashChange);
+  // 해시 변경 감지
+  window.addEventListener('hashchange', render);
 
-  // 초기 페이지 렌더링
-  handleHashChange();
+  // 초기 렌더링
+  render();
 }
 
-// 앱 시작
-init().catch(err => {
-  console.error('앱 초기화 실패:', err);
-  document.getElementById('app').innerHTML =
-    `<div class="alert alert-error">앱 초기화에 실패했습니다: ${err.message}</div>`;
-});
+document.addEventListener('DOMContentLoaded', init);

@@ -6,7 +6,7 @@
 import { AudioRecorder } from '../recorder.js';
 import { preprocessAudio, splitAudioFile } from '../audio-processor.js';
 import { transcribeAllSegments, summarize } from '../groq-api.js';
-import { saveMeeting, deleteAudioSegments } from '../storage.js';
+import { saveMeeting, deleteAudioSegments, saveRecording, loadRecording, loadMeetingsWithRecordings } from '../storage.js';
 import { generateMeetingId, formatDateTime, formatElapsed, formatFileSize, renderMarkdown, downloadAsText } from '../utils.js';
 import { getApiKey, getSettings, navigate, state } from '../app.js';
 
@@ -57,7 +57,15 @@ export function renderRecordPage() {
 
     <hr>
     <h2>기존 녹음 파일 다시 처리</h2>
-    <p class="caption">이전에 녹음한 오디오 파일을 업로드하여 회의록을 다시 생성할 수 있습니다.</p>
+    <p class="caption">이전에 녹음한 파일을 선택하여 회의록을 다시 생성할 수 있습니다.</p>
+
+    <div id="saved-recordings-section">
+      <p class="loading">저장된 녹음 파일 불러오는 중...</p>
+    </div>
+
+    <hr style="border-style:dashed; margin:24px 0;">
+    <h3>외부 파일 업로드</h3>
+    <p class="caption">다른 곳에서 녹음한 오디오 파일을 업로드하여 회의록을 생성할 수도 있습니다.</p>
     <div class="file-upload-area" id="file-drop-zone">
       <input type="file" id="file-input" accept="audio/*,.wav,.webm,.mp3,.m4a,.ogg,.mp4">
       <p>파일을 여기에 끌어다 놓거나 클릭하여 선택</p>
@@ -115,6 +123,9 @@ export function renderRecordPage() {
   btnReprocess.addEventListener('click', () => {
     if (selectedFile) handleFileReprocess(selectedFile);
   });
+
+  // 저장된 녹음 목록 로드
+  loadSavedRecordingsList();
 }
 
 function updateFileInfo(file) {
@@ -124,6 +135,135 @@ function updateFileInfo(file) {
     info.textContent = `${file.name} (${formatFileSize(file.size)})`;
   } else {
     info.textContent = '';
+  }
+}
+
+// ── 저장된 녹음 목록 ──
+async function loadSavedRecordingsList() {
+  const section = document.getElementById('saved-recordings-section');
+  if (!section) return;
+
+  try {
+    const meetings = await loadMeetingsWithRecordings();
+
+    if (!meetings || meetings.length === 0) {
+      section.innerHTML = '<p class="caption" style="color:#999;">저장된 녹음 파일이 없습니다. 녹음을 진행하면 여기에 표시됩니다.</p>';
+      return;
+    }
+
+    let html = '<div class="saved-recordings-list">';
+    for (const m of meetings) {
+      html += `
+        <div class="meeting-card" style="margin-bottom:6px;">
+          <div class="card-info">
+            <strong>${m.created_at}</strong>
+            <p class="card-preview">${m.id}</p>
+          </div>
+          <button class="btn btn-small btn-secondary btn-reprocess-saved" data-meeting-id="${m.id}">
+            다시 처리
+          </button>
+        </div>
+      `;
+    }
+    html += '</div>';
+    section.innerHTML = html;
+
+    // 버튼 이벤트
+    section.querySelectorAll('.btn-reprocess-saved').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const meetingId = btn.dataset.meetingId;
+        handleSavedRecordingReprocess(meetingId);
+      });
+    });
+  } catch (e) {
+    section.innerHTML = `<p class="caption" style="color:#c00;">녹음 목록 로드 실패: ${e.message}</p>`;
+  }
+}
+
+// ── 저장된 녹음 재처리 ──
+async function handleSavedRecordingReprocess(meetingId) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    showError('왼쪽 사이드바에서 Groq API Key를 먼저 입력해 주세요!');
+    return;
+  }
+
+  const recording = await loadRecording(meetingId);
+  if (!recording || !recording.blob) {
+    showError('녹음 파일을 찾을 수 없습니다.');
+    return;
+  }
+
+  const settings = getSettings();
+  state.processing = true;
+  updateButtonStates();
+
+  const stepsEl = document.getElementById('processing-steps');
+  stepsEl.hidden = false;
+  stepsEl.innerHTML = '';
+
+  try {
+    // 전처리 + 분할
+    addStep(stepsEl, 'step-preprocess', '음질 개선 및 파일 분할 중...', 'active');
+    let wavSegments;
+    try {
+      wavSegments = await splitAudioFile(recording.blob);
+    } catch (e) {
+      console.warn('파일 분할 실패, 전처리만 시도:', e);
+      try {
+        const wav = await preprocessAudio(recording.blob);
+        wavSegments = [wav];
+      } catch (e2) {
+        wavSegments = [recording.blob];
+      }
+    }
+    updateStep('step-preprocess', `음질 개선 완료 (${wavSegments.length}개 세그먼트)`, 'complete');
+
+    // STT
+    addStep(stepsEl, 'step-stt', `1단계: 음성을 텍스트로 변환 중... (${wavSegments.length}개 세그먼트)`, 'active');
+    const startTime = Date.now();
+    const transcript = await transcribeAllSegments(
+      wavSegments, apiKey, settings.sttModel, settings.keywords,
+      (current, total) => {
+        updateStep('step-stt', `1단계: 음성 → 텍스트 변환 중... (${current}/${total})`, 'active');
+      }
+    );
+    const sttSec = Math.floor((Date.now() - startTime) / 1000);
+    updateStep('step-stt', `1단계 완료: 음성 → 텍스트 변환 성공 (소요: ${Math.floor(sttSec / 60)}분 ${sttSec % 60}초)`, 'complete');
+
+    // 요약
+    addStep(stepsEl, 'step-summarize', '2단계: 회의록 요약 생성 중... (Groq API)', 'active');
+    const summary = await summarize(transcript, apiKey, false);
+    updateStep('step-summarize', '2단계 완료: 회의록 요약 생성 완료!', 'complete');
+
+    // 새 회의록으로 저장 (원본 녹음은 그대로 유지)
+    const newMeetingId = generateMeetingId();
+    await saveMeeting({
+      id: newMeetingId,
+      created_at: formatDateTime(),
+      transcript,
+      summary,
+      reviewed: false,
+    });
+
+    // 새 회의록에도 녹음 연결
+    try {
+      await saveRecording(newMeetingId, [recording.blob], recording.mimeType, recording.duration);
+    } catch (e) {
+      console.warn('녹음 원본 복사 실패:', e);
+    }
+
+    addStep(stepsEl, 'step-saved', `회의록이 자동 저장되었습니다. (${newMeetingId})`, 'complete');
+
+    state.currentTranscript = transcript;
+    state.currentSummary = summary;
+    showResults(transcript, summary);
+
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    state.processing = false;
+    updateButtonStates();
   }
 }
 
@@ -219,6 +359,13 @@ async function handleStopRecording() {
       summary,
       reviewed: false,
     });
+
+    // 녹음 원본 보관 (나중에 재처리 가능)
+    try {
+      await saveRecording(meetingId, result.segments, result.mimeType, result.totalDuration);
+    } catch (e) {
+      console.warn('녹음 원본 보관 실패:', e);
+    }
 
     // crash recovery 세그먼트 정리
     try {

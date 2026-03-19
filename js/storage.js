@@ -6,7 +6,7 @@
  */
 
 const DB_NAME = 'MeetingMinutesDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let db = null;
 
@@ -22,6 +22,10 @@ export async function initDB() {
       if (!d.objectStoreNames.contains('audioSegments')) {
         const segStore = d.createObjectStore('audioSegments', { keyPath: 'id', autoIncrement: true });
         segStore.createIndex('recordingId', 'recordingId', { unique: false });
+      }
+      // 녹음 원본 보관 (회의록 ID로 연결)
+      if (!d.objectStoreNames.contains('recordings')) {
+        const recStore = d.createObjectStore('recordings', { keyPath: 'meetingId' });
       }
     };
     req.onsuccess = (e) => {
@@ -78,12 +82,77 @@ export async function updateMeeting(id, updates) {
 }
 
 export async function deleteMeeting(id) {
+  // 회의록 + 녹음 원본 함께 삭제
   return new Promise((resolve, reject) => {
-    const tx = getDB().transaction('meetings', 'readwrite');
+    const storeNames = ['meetings'];
+    if (getDB().objectStoreNames.contains('recordings')) {
+      storeNames.push('recordings');
+    }
+    const tx = getDB().transaction(storeNames, 'readwrite');
     tx.objectStore('meetings').delete(id);
+    if (storeNames.includes('recordings')) {
+      tx.objectStore('recordings').delete(id);
+    }
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject(e.target.error);
   });
+}
+
+// ── 녹음 원본 보관 ──
+
+/** 녹음 원본을 회의록 ID와 연결하여 저장 */
+export async function saveRecording(meetingId, segments, mimeType, totalDuration) {
+  // 세그먼트를 하나의 Blob으로 합치기
+  const combinedBlob = new Blob(segments, { type: mimeType || 'audio/webm' });
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('recordings', 'readwrite');
+    tx.objectStore('recordings').put({
+      meetingId,
+      blob: combinedBlob,
+      mimeType: mimeType || 'audio/webm',
+      size: combinedBlob.size,
+      duration: totalDuration,
+      savedAt: Date.now(),
+    });
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/** 녹음 원본 조회 */
+export async function loadRecording(meetingId) {
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('recordings', 'readonly');
+    const req = tx.objectStore('recordings').get(meetingId);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/** 녹음 원본 삭제 */
+export async function deleteRecording(meetingId) {
+  return new Promise((resolve, reject) => {
+    const tx = getDB().transaction('recordings', 'readwrite');
+    tx.objectStore('recordings').delete(meetingId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/** 녹음이 있는 회의록 목록 (재처리용) */
+export async function loadMeetingsWithRecordings() {
+  const meetings = await loadMeetings();
+  const recordingIds = await new Promise((resolve, reject) => {
+    const tx = getDB().transaction('recordings', 'readonly');
+    const req = tx.objectStore('recordings').getAllKeys();
+    req.onsuccess = () => resolve(new Set(req.result || []));
+    req.onerror = (e) => reject(e.target.error);
+  });
+  return meetings
+    .filter(m => recordingIds.has(m.id))
+    .map(m => {
+      return { ...m, hasRecording: true };
+    });
 }
 
 // ── 오디오 세그먼트 (crash recovery) ──

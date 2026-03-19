@@ -3,7 +3,7 @@
  * app.py render_detail_page() 이식
  */
 
-import { loadMeeting, updateMeeting, deleteMeeting } from '../storage.js';
+import { loadMeeting, updateMeeting, deleteMeeting, loadRecording } from '../storage.js';
 import { summarize, reviewTranscript } from '../groq-api.js';
 import { renderMarkdown, escapeHtml, downloadAsText } from '../utils.js';
 import { navigate, getApiKey, state } from '../app.js';
@@ -51,11 +51,19 @@ export async function renderDetailPage(meetingId) {
     return;
   }
 
+  // 녹음 원본 존재 여부 확인
+  let hasRecording = false;
+  try {
+    const rec = await loadRecording(meetingId);
+    hasRecording = !!(rec && rec.blob);
+  } catch (e) { /* ignore */ }
+
   // 기본 상세 보기
   app.innerHTML = `
     <div class="detail-toolbar">
       <button class="btn btn-secondary" id="btn-back">← 목록으로 돌아가기</button>
       <button class="btn btn-secondary" id="btn-download">다운로드 (.txt)</button>
+      ${hasRecording ? '<button class="btn btn-secondary" id="btn-download-audio">녹음 다운로드</button>' : ''}
       <button class="btn btn-danger-outline" id="btn-delete">삭제</button>
     </div>
     <hr>
@@ -90,6 +98,27 @@ export async function renderDetailPage(meetingId) {
     const fn = `회의록_${(meeting.created_at || '').slice(0, 10).replace(/-/g, '')}.txt`;
     downloadAsText(displaySummary, fn);
   });
+
+  // 녹음 다운로드
+  const btnDownloadAudio = document.getElementById('btn-download-audio');
+  if (btnDownloadAudio) {
+    btnDownloadAudio.addEventListener('click', async () => {
+      try {
+        const rec = await loadRecording(meetingId);
+        if (!rec || !rec.blob) { alert('녹음 파일을 찾을 수 없습니다.'); return; }
+        const ext = (rec.mimeType || '').includes('webm') ? 'webm' : (rec.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
+        const fn = `${meetingId.replace('.json', '')}.${ext}`;
+        const url = URL.createObjectURL(rec.blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = fn;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert('녹음 다운로드 실패: ' + e.message);
+      }
+    });
+  }
 
   document.getElementById('btn-delete').addEventListener('click', async () => {
     if (!confirm('이 회의록을 삭제하시겠습니까?')) return;

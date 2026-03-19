@@ -1,12 +1,12 @@
 /**
  * pages/detail.js - 회의록 상세 페이지 + STT 교정 워크플로우
- * app.py render_detail_page() 이식
+ * Phase 2: 클립보드 복사, 교정 일괄 수락/무시
  */
 
 import { loadMeeting, updateMeeting, deleteMeeting, loadRecording } from '../storage.js';
 import { summarize, reviewTranscript } from '../groq-api.js';
 import { renderMarkdown, escapeHtml, downloadAsText } from '../utils.js';
-import { navigate, getApiKey, state } from '../app.js';
+import { navigate, getApiKey, state, showToast } from '../app.js';
 
 // 교정 상태
 let reviewState = {
@@ -30,22 +30,18 @@ export async function renderDetailPage(meetingId) {
       <div class="status-box status-error">회의록을 찾을 수 없습니다.</div>
       <button class="btn btn-secondary" id="btn-back">← 목록으로 돌아가기</button>
     `;
-    document.getElementById('btn-back').addEventListener('click', () => {
-      resetReviewState();
-      navigate('list');
-    });
+    document.getElementById('btn-back').addEventListener('click', () => { resetReviewState(); navigate('list'); });
     return;
   }
 
   const displaySummary = meeting.final_summary || meeting.summary;
   const isReviewed = meeting.reviewed || false;
 
-  // 교정 모드일 때
+  // 교정 모드
   if (reviewState.step === 'reviewing' && reviewState.meetingId === meetingId) {
-    renderReviewMode(app, meeting, displaySummary);
+    renderReviewMode(app, meeting);
     return;
   }
-
   if (reviewState.step === 'done' && reviewState.meetingId === meetingId) {
     renderReviewComplete(app, meeting);
     return;
@@ -53,26 +49,24 @@ export async function renderDetailPage(meetingId) {
 
   // 녹음 원본 존재 여부 확인
   let hasRecording = false;
-  try {
-    const rec = await loadRecording(meetingId);
-    hasRecording = !!(rec && rec.blob);
-  } catch (e) { /* ignore */ }
+  try { const rec = await loadRecording(meetingId); hasRecording = !!(rec && rec.blob); } catch (e) {}
 
   // 기본 상세 보기
   app.innerHTML = `
     <div class="detail-toolbar">
       <button class="btn btn-secondary" id="btn-back">← 목록으로 돌아가기</button>
-      <button class="btn btn-secondary" id="btn-download">다운로드 (.txt)</button>
-      ${hasRecording ? '<button class="btn btn-secondary" id="btn-download-audio">녹음 다운로드</button>' : ''}
-      <button class="btn btn-danger-outline" id="btn-delete">삭제</button>
+      <button class="btn btn-secondary" id="btn-download">📥 다운로드 (.txt)</button>
+      <button class="btn btn-secondary" id="btn-copy">📋 복사</button>
+      ${hasRecording ? '<button class="btn btn-secondary" id="btn-download-audio">🔊 녹음 다운로드</button>' : ''}
+      <button class="btn btn-danger-outline" id="btn-delete">🗑️ 삭제</button>
     </div>
     <hr>
     <p class="caption">작성일시: ${escapeHtml(meeting.created_at)}</p>
-    ${isReviewed ? '<div class="status-box status-success">텍스트 교정 후 회의록이 재생성되었습니다.</div>' : ''}
+    ${isReviewed ? '<div class="status-box status-success">✅ 텍스트 교정 후 회의록이 재생성되었습니다.</div>' : ''}
 
     ${meeting.transcript ? `
     <details class="collapsible">
-      <summary>원본 텍스트 보기 (STT 결과)</summary>
+      <summary>🔊 원본 텍스트 보기 (STT 결과)</summary>
       <textarea readonly rows="8">${escapeHtml(meeting.transcript)}</textarea>
     </details>
     ` : ''}
@@ -81,7 +75,7 @@ export async function renderDetailPage(meetingId) {
 
     <hr>
     <button class="btn btn-primary" id="btn-review" style="width:100%;">
-      ${isReviewed ? '음성 인식 재검토' : '음성 인식 텍스트 검토'}
+      🔍 ${isReviewed ? '음성 인식 재검토' : '음성 인식 텍스트 검토'}
     </button>
     <p class="caption" style="text-align:center; margin-top:4px;">
       AI가 음성 인식 텍스트에서 잘못 변환된 부분을 찾고, 교정 후 회의록을 다시 생성합니다
@@ -89,14 +83,27 @@ export async function renderDetailPage(meetingId) {
   `;
 
   // 이벤트
-  document.getElementById('btn-back').addEventListener('click', () => {
-    resetReviewState();
-    navigate('list');
-  });
+  document.getElementById('btn-back').addEventListener('click', () => { resetReviewState(); navigate('list'); });
 
   document.getElementById('btn-download').addEventListener('click', () => {
     const fn = `회의록_${(meeting.created_at || '').slice(0, 10).replace(/-/g, '')}.txt`;
     downloadAsText(displaySummary, fn);
+  });
+
+  // Phase 2: 클립보드 복사
+  document.getElementById('btn-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(displaySummary);
+      showToast('클립보드에 복사되었습니다!', 'success');
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = displaySummary;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('클립보드에 복사되었습니다!', 'success');
+    }
   });
 
   // 녹음 다운로드
@@ -114,42 +121,24 @@ export async function renderDetailPage(meetingId) {
         document.body.appendChild(a); a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-      } catch (e) {
-        alert('녹음 다운로드 실패: ' + e.message);
-      }
+      } catch (e) { alert('녹음 다운로드 실패: ' + e.message); }
     });
   }
 
   document.getElementById('btn-delete').addEventListener('click', async () => {
     if (!confirm('이 회의록을 삭제하시겠습니까?')) return;
-    try {
-      await deleteMeeting(meetingId);
-      resetReviewState();
-      navigate('list');
-    } catch (e) {
-      alert('삭제 실패: ' + e.message);
-    }
+    try { await deleteMeeting(meetingId); resetReviewState(); navigate('list'); }
+    catch (e) { alert('삭제 실패: ' + e.message); }
   });
 
   document.getElementById('btn-review').addEventListener('click', async () => {
     const apiKey = getApiKey();
-    if (!apiKey) {
-      alert('왼쪽 사이드바에서 Groq API Key를 먼저 입력해 주세요!');
-      return;
-    }
-    if (!meeting.transcript) {
-      alert('원본 텍스트가 없어 검토할 수 없습니다.');
-      return;
-    }
+    if (!apiKey) { alert('왼쪽 사이드바에서 Groq API Key를 먼저 입력해 주세요!'); return; }
+    if (!meeting.transcript) { alert('원본 텍스트가 없어 검토할 수 없습니다.'); return; }
 
-    // 검토 시작
     reviewState.step = 'loading';
     reviewState.meetingId = meetingId;
-    app.innerHTML = `
-      <div class="status-box status-info">
-        <span class="step-icon">⏳</span> AI가 음성 인식 텍스트를 검토하고 있습니다...
-      </div>
-    `;
+    app.innerHTML = `<div class="status-box status-info"><span class="step-icon">⏳</span> AI가 음성 인식 텍스트를 검토하고 있습니다...</div>`;
 
     try {
       const issues = await reviewTranscript(meeting.transcript, apiKey);
@@ -185,15 +174,10 @@ function renderReviewMode(app, meeting) {
   // 이전 교정으로 사라진 텍스트 건너뛰기
   while (idx < issues.length) {
     const orig = issues[idx].original || '';
-    if (orig && !reviewState.transcript.includes(orig)) {
-      idx++;
-      reviewState.index = idx;
-      continue;
-    }
+    if (orig && !reviewState.transcript.includes(orig)) { idx++; reviewState.index = idx; continue; }
     break;
   }
 
-  // 모든 항목 완료
   if (idx >= issues.length) {
     reviewState.step = 'done';
     renderReviewComplete(app, meeting);
@@ -205,13 +189,20 @@ function renderReviewMode(app, meeting) {
   const suggestion = issue.suggestion || '';
   const reason = issue.reason || '수정 제안';
   const occurCount = original ? (reviewState.transcript.split(original).length - 1) : 0;
+  const remaining = issues.length - idx;
 
   app.innerHTML = `
-    <h2>음성 인식 텍스트 검토</h2>
+    <h2>🔍 음성 인식 텍스트 검토</h2>
     <div class="progress-bar">
       <div class="progress-fill" style="width: ${((idx) / issues.length) * 100}%"></div>
     </div>
     <p class="caption" style="text-align:center;">진행: ${idx + 1} / ${issues.length}</p>
+
+    <!-- Phase 2: 일괄 처리 버튼 -->
+    <div class="batch-actions">
+      <button class="btn btn-small btn-secondary" id="btn-accept-all">✅ 나머지 ${remaining}개 전체 수락</button>
+      <button class="btn btn-small btn-secondary" id="btn-skip-all">⏭️ 나머지 ${remaining}개 전체 무시</button>
+    </div>
 
     <details class="collapsible">
       <summary>현재 텍스트 전체 보기</summary>
@@ -235,12 +226,12 @@ function renderReviewMode(app, meeting) {
       </div>
 
       <div class="review-actions">
-        <button class="btn btn-primary" id="btn-accept">수락</button>
-        <button class="btn btn-secondary" id="btn-skip">무시</button>
+        <button class="btn btn-primary" id="btn-accept">✅ 수락</button>
+        <button class="btn btn-secondary" id="btn-skip">⏭️ 무시</button>
       </div>
 
       <details class="collapsible" style="margin-top:12px;">
-        <summary>직접 수정하기</summary>
+        <summary>✏️ 직접 수정하기</summary>
         <div style="display:flex; gap:8px; margin-top:8px;">
           <input type="text" id="custom-text" class="sidebar-input" style="flex:1; color:var(--text); background:var(--bg-secondary);">
           <button class="btn btn-secondary" id="btn-apply-custom">적용</button>
@@ -249,14 +240,12 @@ function renderReviewMode(app, meeting) {
     </div>
   `;
 
-  // input value를 프로그래밍 방식으로 설정 (XSS 방지)
   const customInput = document.getElementById('custom-text');
   if (customInput) customInput.value = suggestion;
 
+  // 개별 수락/무시
   document.getElementById('btn-accept').addEventListener('click', () => {
-    if (original && suggestion) {
-      reviewState.transcript = reviewState.transcript.replaceAll(original, suggestion);
-    }
+    if (original && suggestion) reviewState.transcript = reviewState.transcript.replaceAll(original, suggestion);
     reviewState.index = idx + 1;
     renderDetailPage(reviewState.meetingId);
   });
@@ -268,10 +257,29 @@ function renderReviewMode(app, meeting) {
 
   document.getElementById('btn-apply-custom').addEventListener('click', () => {
     const custom = document.getElementById('custom-text').value;
-    if (original && custom) {
-      reviewState.transcript = reviewState.transcript.replaceAll(original, custom);
-    }
+    if (original && custom) reviewState.transcript = reviewState.transcript.replaceAll(original, custom);
     reviewState.index = idx + 1;
+    renderDetailPage(reviewState.meetingId);
+  });
+
+  // Phase 2: 일괄 수락
+  document.getElementById('btn-accept-all').addEventListener('click', () => {
+    for (let i = idx; i < issues.length; i++) {
+      const orig = issues[i].original || '';
+      const sug = issues[i].suggestion || '';
+      if (orig && sug && reviewState.transcript.includes(orig)) {
+        reviewState.transcript = reviewState.transcript.replaceAll(orig, sug);
+      }
+    }
+    reviewState.index = issues.length;
+    reviewState.step = 'done';
+    renderDetailPage(reviewState.meetingId);
+  });
+
+  // Phase 2: 일괄 무시
+  document.getElementById('btn-skip-all').addEventListener('click', () => {
+    reviewState.index = issues.length;
+    reviewState.step = 'done';
     renderDetailPage(reviewState.meetingId);
   });
 }
@@ -279,25 +287,22 @@ function renderReviewMode(app, meeting) {
 // ── 교정 완료 ──
 function renderReviewComplete(app, meeting) {
   app.innerHTML = `
-    <h2>텍스트 교정 완료</h2>
+    <h2>✅ 텍스트 교정 완료</h2>
     <div class="status-box status-info">모든 항목의 검토가 끝났습니다. 교정된 텍스트로 회의록을 다시 생성합니다.</div>
 
     <details class="collapsible">
-      <summary>교정된 텍스트 확인</summary>
+      <summary>📝 교정된 텍스트 확인</summary>
       <textarea readonly rows="6">${escapeHtml(reviewState.transcript)}</textarea>
     </details>
 
     <button class="btn btn-primary" id="btn-regenerate" style="width:100%; margin-top:12px;">
-      회의록 재생성
+      📝 회의록 재생성
     </button>
   `;
 
   document.getElementById('btn-regenerate').addEventListener('click', async () => {
     const apiKey = getApiKey();
-    if (!apiKey) {
-      alert('Groq API Key를 입력해 주세요.');
-      return;
-    }
+    if (!apiKey) { alert('Groq API Key를 입력해 주세요.'); return; }
 
     const btn = document.getElementById('btn-regenerate');
     btn.disabled = true;
@@ -315,10 +320,11 @@ function renderReviewComplete(app, meeting) {
       });
 
       resetReviewState();
+      showToast('회의록이 재생성되었습니다!', 'success');
       renderDetailPage(meeting.id);
     } catch (e) {
       btn.disabled = false;
-      btn.textContent = '회의록 재생성';
+      btn.textContent = '📝 회의록 재생성';
       alert('재생성 실패: ' + e.message);
     }
   });

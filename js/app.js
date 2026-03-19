@@ -1,5 +1,6 @@
 /**
  * app.js - 앱 진입점, 라우터, 전역 상태
+ * + Phase 2: toast 알림, 저장 공간 체크
  */
 
 import { initDB, getOrphanedRecordingIds, deleteAudioSegments } from './storage.js';
@@ -28,11 +29,43 @@ export function getSettings() {
   for (const r of modelRadios) {
     if (r.checked) { sttModel = r.value; break; }
   }
-
   const keywordsEl = document.getElementById('input-keywords');
   const keywords = keywordsEl ? keywordsEl.value.trim() : '';
-
   return { sttModel, keywords };
+}
+
+// ── Toast 알림 시스템 ──
+export function showToast(message, type = 'info') {
+  // 기존 toast 제거
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  // 표시 애니메이션
+  requestAnimationFrame(() => toast.classList.add('toast-show'));
+
+  // 3초 후 자동 제거
+  setTimeout(() => {
+    toast.classList.remove('toast-show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// ── 저장 공간 체크 ──
+export async function checkStorageQuota() {
+  if (navigator.storage && navigator.storage.estimate) {
+    try {
+      const est = await navigator.storage.estimate();
+      return { usage: est.usage || 0, quota: est.quota || 0 };
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
 }
 
 // ── 라우팅 ──
@@ -62,6 +95,10 @@ async function render() {
     btn.classList.toggle('active', btn.dataset.page === page || (page === 'detail' && btn.dataset.page === 'list'));
   });
 
+  // 모바일: 네비게이션 시 사이드바 닫기
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) sidebar.classList.remove('open');
+
   switch (page) {
     case 'record':
       renderRecordPage();
@@ -80,7 +117,6 @@ async function render() {
 
 // ── 초기화 ──
 async function init() {
-  // IndexedDB 초기화
   await initDB();
 
   // API 키 복원
@@ -104,11 +140,8 @@ async function init() {
   const modelRadio = document.querySelector(`input[name="stt-model"][value="${savedModel}"]`);
   if (modelRadio) modelRadio.checked = true;
 
-  // STT 모델 변경 저장
   document.querySelectorAll('input[name="stt-model"]').forEach((r) => {
-    r.addEventListener('change', () => {
-      localStorage.setItem('stt_model', r.value);
-    });
+    r.addEventListener('change', () => localStorage.setItem('stt_model', r.value));
   });
 
   // 키워드 복원
@@ -116,9 +149,7 @@ async function init() {
   const keywordsInput = document.getElementById('input-keywords');
   if (keywordsInput && savedKeywords) keywordsInput.value = savedKeywords;
   if (keywordsInput) {
-    keywordsInput.addEventListener('input', () => {
-      localStorage.setItem('stt_keywords', keywordsInput.value);
-    });
+    keywordsInput.addEventListener('input', () => localStorage.setItem('stt_keywords', keywordsInput.value));
   }
 
   // 사이드바 네비게이션
@@ -133,13 +164,8 @@ async function init() {
   const menuToggle = document.getElementById('menu-toggle');
   const sidebar = document.getElementById('sidebar');
   if (menuToggle && sidebar) {
-    menuToggle.addEventListener('click', () => {
-      sidebar.classList.toggle('open');
-    });
-    // 메뉴 외부 클릭 시 닫기
-    document.getElementById('app').addEventListener('click', () => {
-      sidebar.classList.remove('open');
-    });
+    menuToggle.addEventListener('click', () => sidebar.classList.toggle('open'));
+    document.getElementById('app').addEventListener('click', () => sidebar.classList.remove('open'));
   }
 
   // API 키 가이드 모달
@@ -149,28 +175,18 @@ async function init() {
   if (guideBtn && guideModal) {
     guideBtn.addEventListener('click', () => { guideModal.hidden = false; });
     if (guideClose) guideClose.addEventListener('click', () => { guideModal.hidden = true; });
-    guideModal.addEventListener('click', (e) => {
-      if (e.target === guideModal) guideModal.hidden = true;
-    });
+    guideModal.addEventListener('click', (e) => { if (e.target === guideModal) guideModal.hidden = true; });
   }
 
   // crash recovery 체크
   try {
     const orphanIds = await getOrphanedRecordingIds();
     if (orphanIds.length > 0) {
-      console.log(`이전 녹음 세그먼트 ${orphanIds.length}건 발견 (자동 정리)`);
-      for (const id of orphanIds) {
-        await deleteAudioSegments(id);
-      }
+      for (const id of orphanIds) await deleteAudioSegments(id);
     }
-  } catch (e) {
-    console.warn('crash recovery 체크 실패:', e);
-  }
+  } catch (e) { console.warn('crash recovery 체크 실패:', e); }
 
-  // 해시 변경 감지
   window.addEventListener('hashchange', render);
-
-  // 초기 렌더링
   render();
 }
 
